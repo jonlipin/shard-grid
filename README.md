@@ -27,7 +27,7 @@ Shard Grid is a lightweight Warlock addon that shows your Soul Shards as a small
 - Optional chat message each time shards are removed.
 
 ### Looks and feels like the default UI
-- Options live in the game's own menu: **Esc > Options > AddOns > Shard Grid**, using standard checkboxes, sliders and dropdowns.
+- A clean options window built from the game's own checkboxes, sliders and buttons. Open it with `/shards`, the minimap button, the cog on the grid, or from **Esc > Options > AddOns > Shard Grid**.
 - Minimap button: left-click for options, right-click to show or hide the grid, drag to move it. Can be hidden.
 - Settings are saved per character.
 
@@ -44,7 +44,6 @@ Shard Grid is a lightweight Warlock addon that shows your Soul Shards as a small
 | `/shards lock` / `unlock` | Lock or unlock the grid and alert icon |
 | `/shards show` / `hide` | Show or hide the grid |
 | `/shards minimap` | Toggle the minimap button |
-| `/shards oldmenu` | Use a standalone options window instead of the game's Options page |
 | `/shards reset` | Restore default settings and positions |
 | `/shards debug` | Print diagnostic info (handy for bug reports) |
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (2026-09-21)
+- Fixed Blizzard nameplate errors ("attempt to compare a secret number value, execution tainted by ShardGrid"). The options no longer use the game's Settings controls or open the Settings panel from addon code. Options now always open in Shard Grid's own window, and the Options > AddOns entry is a simple page with a button that opens it.
+- Removed the `/shards oldmenu` command, since there is only one options window now.
+
 ## 1.0.0 - Initial release (2026-09-21)
 
 ### Shard grid
@@ -23,7 +27,7 @@
 - Optional pause while no soul bag is equipped, optional chat announcements, and a "Delete extras now" button.
 
 ### Interface
-- Options page in the game's own Options > AddOns menu, with a standalone options window as a fallback.
+- Options window built from standard game controls, also reachable from Options > AddOns.
 - Minimap button: left-click for options, right-click to show or hide the grid, drag to move.
 - Slash commands: `/shards` and `/shardgrid` (see the README for the full list).
 - `/shards debug` diagnostic output for bug reports.

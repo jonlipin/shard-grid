@@ -1040,180 +1040,54 @@ local function BuildConfig()
 end
 
 -- ------------------------------------------------------------------
--- Native options: a real page in the game's Options > AddOns list, built from Blizzard's own
--- settings controls. The hand-built window above stays as the fallback ("/shards oldmenu").
+-- Options entry in the game's Options > AddOns list.
+-- Deliberately minimal: a canvas page with one button that opens our own window. An earlier
+-- version registered real Settings controls (proxy settings) and opened the Settings panel from
+-- addon code; on this client that tainted Blizzard code paths (nameplate health text threw
+-- "attempt to compare a secret number value (execution tainted by 'ShardGrid')"). We never call
+-- Settings.OpenToCategory and never hand the Settings panel values to read.
 -- ------------------------------------------------------------------
-local nativeCategory
+local ToggleConfig
 
-local function BuildNativeSettings()
-	if not (Settings and Settings.RegisterVerticalLayoutCategory and Settings.RegisterProxySetting
-		and Settings.RegisterAddOnCategory and Settings.CreateSliderOptions) then
+local function BuildOptionsEntry()
+	if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then
 		error("Settings API not available")
 	end
-	local category, layout = Settings.RegisterVerticalLayoutCategory("Shard Grid")
-	local VT = Settings.VarType or {}
-	local T_BOOL, T_NUM = VT.Boolean or "boolean", VT.Number or "number"
-	local CreateCheckbox = Settings.CreateCheckbox or Settings.CreateCheckBox
-	local CreateDropdown = Settings.CreateDropdown or Settings.CreateDropDown
+	local page = CreateFrame("Frame")
+	page:Hide()
 
-	ns.native = ns.native or {}
-	local function RegisterProxy(key, vtype, name, default, get, set)
-		local var = "ShardGrid_" .. key
-		-- 11.x signature
-		local ok, setting = pcall(Settings.RegisterProxySetting, category, var, vtype, name, default, get, set)
-		if ok and type(setting) == "table" and setting.GetValue then
-			local ok2, v = pcall(setting.GetValue, setting)
-			if ok2 and v == get() then return setting end
-		end
-		-- 10.x signature carried a variable table before the type
-		ok, setting = pcall(Settings.RegisterProxySetting, category, var .. "_", {}, vtype, name, default, get, set)
-		if ok and type(setting) == "table" then
-			report["settings signature"] = "10.x"
-			return setting
-		end
-		error("RegisterProxySetting failed for " .. key .. ": " .. tostring(setting))
-	end
+	local title = page:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 16, -16)
+	title:SetText("Shard Grid")
 
-	local function Proxy(key, ...)
-		local setting = RegisterProxy(key, ...)
-		ns.native[key] = setting
-		return setting
-	end
+	local blurb = page:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	blurb:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+	blurb:SetPoint("RIGHT", -16, 0)
+	blurb:SetJustifyH("LEFT")
+	blurb:SetText("Soul Shard grid, low shard alert and auto-delete.\nOptions open in their own window: click below, type /shards, or use the minimap button.")
 
-	local function Header(text)
-		if CreateSettingsListSectionHeaderInitializer then
-			layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text))
-		end
-	end
-	local function Check(key, name, tip, get, set)
-		CreateCheckbox(category, Proxy(key, T_BOOL, name, DEFAULTS[key] or false, get, set), tip)
-	end
-	local function Slider(key, name, tip, min, max, step, get, set, fmt)
-		local opts = Settings.CreateSliderOptions(min, max, step)
-		if opts.SetLabelFormatter and MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label then
-			opts:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, fmt)
-		end
-		Settings.CreateSlider(category, Proxy(key, T_NUM, name, DEFAULTS[key] or min, get, set), opts, tip)
-	end
-	local function Button(name, text, tip, onClick)
-		if CreateSettingsButtonInitializer then
-			layout:AddInitializer(CreateSettingsButtonInitializer(name, text, onClick, tip, true))
-		end
-	end
-
-	Header("Display")
-	Slider("cols", "Grid width (columns)", "How many slots wide the shard grid is. You can also drag the grip in the grid's corner.",
-		MIN_COLS, MAX_COLS, 1,
-		function() return db.cols end,
-		function(v) db.cols = v Refresh() end)
-	Slider("size", "Slot size", "Size of each shard slot.",
-		12, 64, 2,
-		function() return db.size end,
-		function(v) db.size = v Refresh() end)
-	Slider("scalePct", "Scale", "Scales the whole shard grid.",
-		50, 200, 5,
-		function() return math.floor(db.scale * 100 + 0.5) end,
-		function(v) SetGridScale(v / 100) Refresh() end,
-		function(v) return math.floor(v + 0.5) .. "%" end)
-	Check("shown", "Show grid", "Show the shard grid window.",
-		function() return db.shown end,
-		function(v) db.shown = v Refresh() end)
-	Check("locked", "Lock position", "Stops the grid and the alert icon from being dragged, and hides the width grip.",
-		function() return db.locked end,
-		function(v) db.locked = v ApplyLock() end)
-	Check("minimapShown", "Show minimap button", "Left-click opens these options, right-click shows or hides the grid.",
-		function() return db.minimapShown end,
-		function(v) db.minimapShown = v ns.UpdateMinimapButton() end)
-
-	Header("Overflow shards")
-	Check("autoDelete", "Auto-delete extra shards",
-		"Destroys Soul Shards sitting in your normal bags once you hold more than your soul bag capacity plus the allowance below. Shards inside the soul bag are never touched.",
-		function() return db.autoDelete end,
-		function(v) SetAutoDelete(v) end)
-	Slider("keepExtra", "Extra shards to keep", "How many shards you may hold beyond your soul bag capacity before extras are deleted. With no soul bag this is your total shard limit. Resets to the maximum whenever auto-delete is turned off.",
-		0, KEEP_MAX, 1,
-		function() return db.keepExtra end,
-		function(v) db.keepExtra = v Refresh() end)
-	Check("onlyWithBag", "Pause while no soul bag is equipped", "Tick this if you'd rather nothing is deleted while you have no soul bag (e.g. while swapping bags).",
-		function() return db.onlyWithBag end,
-		function(v) db.onlyWithBag = v Refresh() end)
-	Check("announce", "Announce deletions in chat", "Print a line in chat each time a shard is deleted.",
-		function() return db.announce end,
-		function(v) db.announce = v end)
-	Button("Over the limit right now", "Delete extras now", "Deletes shards over your limit once, even if auto-delete is off.", function()
-		if not lastStats or Excess(lastStats) <= 0 then
-			Print("Nothing over the limit.")
-			return
-		end
-		deleteBlocked, stalledAttempts, lastAttemptTotal = false, 0, nil
-		manualRun = true
-		Refresh()
-		ns.HardwareDeletePass()
+	local open = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+	open:SetSize(200, 24)
+	open:SetPoint("TOPLEFT", blurb, "BOTTOMLEFT", 0, -14)
+	open:SetText("Open Shard Grid options")
+	open:SetScript("OnClick", function()
+		if not (config and config:IsShown()) then ToggleConfig() end
 	end)
 
-	Header("Low shard alert")
-	Check("alertEnabled", "Show alert icon when low", "A separate, movable icon that pulses while your total Soul Shards are below the threshold.",
-		function() return db.alertEnabled end,
-		function(v) db.alertEnabled = v Refresh() end)
-	Slider("alertThreshold", "Alert when below", "The alert shows while you have fewer shards than this.",
-		1, 40, 1,
-		function() return db.alertThreshold end,
-		function(v) db.alertThreshold = v Refresh() end)
-	Slider("alertSize", "Alert icon size", "Size of the alert icon.",
-		24, 128, 4,
-		function() return db.alertSize end,
-		function(v) db.alertSize = v Refresh() end)
-	Check("alertSound", "Play a sound when shards run low", "Plays once each time you drop below the threshold.",
-		function() return db.alertSound end,
-		function(v) db.alertSound = v end)
-	if CreateDropdown and Settings.CreateControlTextContainer then
-		local soundSetting = Proxy("alertSoundChoice", T_NUM, "Alert sound", 1,
-			function() return db.alertSoundChoice or 1 end,
-			function(v)
-				db.alertSoundChoice, db.alertSoundCustom = v, nil
-				ns.PlayAlertSound()
-			end)
-		CreateDropdown(category, soundSetting, function()
-			local container = Settings.CreateControlTextContainer()
-			for i, c in ipairs(SOUND_CHOICES) do container:Add(i, c[1]) end
-			return container:GetData()
-		end, "Picking a sound plays it. Any sound kit id also works: /shards sound 12345")
-	end
-	Button("Alert sound", "Test sound", "Play the current alert sound.", function()
-		local name, played = ns.PlayAlertSound()
-		if not played then Print(name .. " isn't available on this client (or sound effects are muted).") end
-	end)
-	Check("alertPreview", "Show alert now (to position it)", "Keeps the alert icon visible so you can drag it where you want. Turns itself off when the options close.",
-		function() return alertPreview end,
-		function(v) alertPreview = v Refresh() end)
-
+	local category = Settings.RegisterCanvasLayoutCategory(page, "Shard Grid")
 	Settings.RegisterAddOnCategory(category)
-	if SettingsPanel and SettingsPanel.HookScript then
-		SettingsPanel:HookScript("OnHide", function()
-			if alertPreview then alertPreview = false Refresh() end
-		end)
-	end
-	nativeCategory = category
 end
 
 function ns.SetupNativeSettings()
-	if nativeCategory or report["native settings"] then return end
-	local ok, err = pcall(BuildNativeSettings)
-	report["native settings"] = ok and "ok" or ("failed: " .. tostring(err))
+	if report["options entry"] then return end
+	local ok, err = pcall(BuildOptionsEntry)
+	report["options entry"] = ok and "ok (canvas page)" or ("failed: " .. tostring(err))
 end
 
-local function ToggleConfig()
-	if nativeCategory and not db.oldMenu then
-		if SettingsPanel and SettingsPanel:IsShown() then
-			if HideUIPanel then HideUIPanel(SettingsPanel) else SettingsPanel:Hide() end
-			return
-		end
-		local id = nativeCategory.GetID and nativeCategory:GetID() or nativeCategory.ID
-		if pcall(Settings.OpenToCategory, id) and SettingsPanel and SettingsPanel:IsShown() then return end
-		report["native open"] = "failed, using old menu"
-	end
+function ToggleConfig()
 	if not config then BuildConfig() end
 	config:SetShown(not config:IsShown())
+	if config:IsShown() and config.Raise then config:Raise() end
 end
 
 -- Cog in the title bar + right-click on the grid.
@@ -1396,7 +1270,7 @@ local function Help()
 	Print("/shards opens the options window. Also:")
 	Print("  /shards width N | size N | scale N (0.5-2)")
 	Print("  /shards alert N (threshold) | alert on | alert off")
-	Print("  /shards sound ID | minimap (toggle button) | oldmenu (standalone options window)")
+	Print("  /shards sound ID | minimap (toggle button)")
 	Print("  /shards lock | unlock | show | hide | reset | debug")
 end
 
@@ -1444,10 +1318,6 @@ SlashCmdList["SHARDGRID"] = function(msg)
 		db.alertSoundCustom = math.floor(num)
 		local _, played = ns.PlayAlertSound()
 		Print("Alert sound kit " .. db.alertSoundCustom .. (played and "." or " - the client didn't play it."))
-	elseif cmd == "oldmenu" then
-		db.oldMenu = not db.oldMenu
-		Print(db.oldMenu and "Using the standalone options window." or "Using the game's Options > AddOns page.")
-		return
 	elseif cmd == "minimap" then
 		db.minimapShown = not db.minimapShown
 		ns.UpdateMinimapButton()
