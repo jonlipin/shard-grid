@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Shard Grid
-## Notes: Soul Shard grid: soul bag slots, free space and overflow shards at a glance.|n|cff00ccff/shards|r for options.
+## Notes: Everything a Warlock does with Soul Shards: a bag-style shard grid, a low shard alert, summon requests, a soulstone tracker and Healthstone trades.|n|cff00ccff/shards|r for options.
 ## Author: Jon
-## Version: 1.0.1
+## Version: 1.2.0
 ## LoadSavedVariablesFirst: 1
 ## SavedVariablesPerCharacter: ShardGridDB
 ## IconTexture: Interface\Icons\INV_Misc_Gem_Amethyst_02
