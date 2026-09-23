@@ -2065,12 +2065,13 @@ function ApplyRowArt(row)
 	SetArt(row.spark, spark, "ADD")
 	local info = spark and spark ~= "none" and C_Texture and C_Texture.GetAtlasInfo
 		and C_Texture.GetAtlasInfo(spark)
-	local h = row.fill:GetHeight()
-	if type(h) ~= "number" or h <= 0 then h = STONE.BAR_H - 8 end
+	-- The pip spans the whole bar, not just the inset fill, the way the client draws it.
+	local h = row.bar:GetHeight()
+	if type(h) ~= "number" or h <= 0 then h = STONE.BAR_H end
 	if info and type(info.width) == "number" and type(info.height) == "number" and info.height > 0 then
-		row.spark:SetSize(h * 1.2 * (info.width / info.height), h * 1.2)
+		row.spark:SetSize(h * (info.width / info.height), h)
 	else
-		row.spark:SetSize(8, h * 1.8)
+		row.spark:SetSize(8, h)
 	end
 
 	local mask = BarArt("mask")
