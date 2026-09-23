@@ -876,10 +876,14 @@ function ANIM.TossIn(cell, size, tint)
 	cell.animIn = true
 	cell.icon:SetAlpha(0)
 
-	-- Thrown from the middle of the screen, a third of the way up, with a little scatter so
-	-- several shards at once do not follow the same line.
-	local x0 = w * 0.5 + (math.random() * 2 - 1) * w * 0.03
-	local y0 = h / 3 + (math.random() * 2 - 1) * h * 0.02
+	-- Thrown from somewhere in a patch of screen around the middle, a third of the way up, so
+	-- every shard comes from its own spot rather than all from one point. A random angle with
+	-- the square root of a random radius spreads them evenly over the patch instead of
+	-- bunching them in the centre.
+	local angle = math.random() * 2 * math.pi
+	local reach = math.sqrt(math.random())
+	local x0 = w * 0.5 + math.cos(angle) * reach * w * 0.09
+	local y0 = h / 3 + math.sin(angle) * reach * h * 0.09
 
 	-- The peak of the lob sits above whichever end is higher, by more the further it travels.
 	local dx, dy = x1 - x0, y1 - y0
