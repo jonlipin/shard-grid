@@ -985,7 +985,8 @@ function ANIM.TossIn(cell, size, tint)
 end
 
 function ANIM.FlashOut(cell, size, tint)
-	local _, _, rel = ANIM.OnScreen(cell)
+	local x, y, rel = ANIM.OnScreen(cell)
+	if x then ANIM.Burst(x, y, size * (rel or 1) * 1.9) end
 	local tex = ANIM.GetFlyer()
 	tex.busy = true
 	tex:SetVertexColor(tint and tint[1] or 1, tint and tint[2] or 1, tint and tint[3] or 1)
