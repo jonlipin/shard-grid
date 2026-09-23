@@ -966,7 +966,8 @@ function ANIM.TossIn(cell, size, tint)
 	-- The peak of the lob sits well above whichever end is higher, by more the further it
 	-- travels, so the throw carries rather than skimming across.
 	local dx, dy = x1 - x0, y1 - y0
-	local lift = math.max(h * 0.24, math.sqrt(dx * dx + dy * dy) * 0.55)
+	local lift = math.max(h * 0.24, math.sqrt(dx * dx + dy * dy) * 0.55) * (0.88 + math.random() * 0.24)
+	local flight = ANIM.IN * (0.9 + math.random() * 0.2)
 
 	-- Rotation follows the throw: clockwise going right, the other way going left. Positive
 	-- angles turn counter-clockwise, hence the sign.
@@ -975,7 +976,7 @@ function ANIM.TossIn(cell, size, tint)
 	ANIM.Burst(x0, y0, size * rel * 2.2)
 
 	ANIM.StartAnimation({
-		tex = tex, cell = cell, size = size * rel, t = 0, dur = ANIM.IN, arriving = true,
+		tex = tex, cell = cell, size = size * rel, t = 0, dur = flight, arriving = true,
 		x0 = x0, y0 = y0,
 		cx = (x0 + x1) / 2,
 		cy = math.max(y0, y1) + lift,
