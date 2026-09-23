@@ -882,7 +882,13 @@ function ANIM.StepAnimations(_, elapsed)
 		if a.arriving then
 			-- A quadratic curve: P = (1-t)^2 * start + 2(1-t)t * peak + t^2 * slot. The peak
 			-- sits above both ends, so the shard rises and then falls into place.
-			local t = pos ^ 0.9 -- a touch of slowing as it lands
+			--
+			-- Time runs straight here on purpose. The peak is set midway across, which makes
+			-- the horizontal part of that curve linear and the vertical part a parabola, so
+			-- a straight clock gives constant horizontal speed with the vertical slowing to
+			-- a stop at the top and gathering pace on the way down. That is a thrown object
+			-- under gravity, and bending the clock would only spoil it.
+			local t = pos
 			local inv = 1 - t
 			local x = inv * inv * a.x0 + 2 * inv * t * a.cx + t * t * a.x1
 			local y = inv * inv * a.y0 + 2 * inv * t * a.cy + t * t * a.y1
