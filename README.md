@@ -19,7 +19,7 @@ It is built from the game's own interface art and its options live in the game's
 - **Overflow highlighting:** shards that spilled into your normal bags are added to the end of the grid in **orange** and counted separately (`18/24 +3`), so you can tell at a glance when you are wasting bag space.
 - **Bag-like:** empty bag slots fill out the grid so it keeps a steady shape, with a minimum number of rows, and an option to put the free slots first.
 - **Resizable:** drag the corner grip to set how many columns wide the grid is, or use sliders for width, slot size and overall scale. The frame border stays intact at any size.
-- **Animated:** a purple star of light bursts in the middle of the screen and a new shard is thrown out of it, lobbing up and back down into its slot while it tumbles, grows and trails purple light. A spent one flashes out. Can be turned off.
+- **Animated:** a purple star of light bursts in the middle of the screen and a new shard is thrown out of it, lobbing up and back down into its slot while it tumbles, grows and trails purple light. A spent one flashes out. All of it can be turned off.
 - Hover for a full breakdown: in soul bag, free slots, overflow, total.
 
 ### Low shard alert
@@ -74,6 +74,7 @@ It is built from the game's own interface art and its options live in the game's
 | `/shards summons` | Open or close the summon request window |
 | `/shards summons test` | Add a fake request to preview the window |
 | `/shards stones` | Open or close the soulstone tracker |
+| `/shards anim` | Turn the shard animations on or off |
 | `/shards minimap` | Toggle the minimap button |
 | `/shards cog` | Step through the settings icons your client has |
 | `/shards cog list` | List them, marking the one in use |

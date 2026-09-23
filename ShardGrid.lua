@@ -1002,6 +1002,21 @@ end
 
 ns.ANIM = ANIM -- exposed so the offline tests can check the flight path
 
+-- Clear anything in flight, and give the slots their icons back.
+function ANIM.StopAll()
+	for i = #ANIM.running, 1, -1 do
+		local a = ANIM.running[i]
+		a.tex:Hide()
+		a.tex.busy = false
+		if a.cell and a.arriving then
+			a.cell.animIn = nil
+			a.cell.icon:SetAlpha(1)
+		end
+		ANIM.running[i] = nil
+	end
+	if ANIM.driver then ANIM.driver:SetScript("OnUpdate", nil) end
+end
+
 -- Work out what changed since the last refresh and play it.
 function ANIM.PlayChanges(data, count, size)
 	local before = ns.prevKinds
@@ -3133,7 +3148,10 @@ local function BuildConfig()
 	y = y - 26
 	AddCheck(col, y, "Animate shards",
 		function() return db.animate end,
-		function(v) db.animate = v end,
+		function(v)
+			db.animate = v
+			if not v then ANIM.StopAll() end
+		end,
 		"A new shard is tossed into its slot, growing as it arrives, and a spent one flashes out of its slot.")
 	y = y - 26
 	AddCheck(col, y, "Lock position",
@@ -3880,6 +3898,7 @@ local function Help()
 	Print("  /shards stones (soulstone tracker)")
 	Print("  /shards cog (next cog art) | cog list | cog grab (copy the art you are pointing at)")
 	Print("  /shards bar grab (copy a bar's art for the soulstone bars) | bar reset")
+	Print("  /shards anim (shards flying into the grid) | anim on | anim off")
 	Print("  /shards lock | unlock | show | hide | reset | debug")
 end
 
@@ -3992,6 +4011,13 @@ SlashCmdList["SHARDGRID"] = function(msg)
 			local got = ns.SetCogArt(want)
 			Print("Cog art: " .. (got and ns.CogArtName(got) or "none available") .. ". /shards cog again for the next one, /shards cog list to see them all.")
 		end
+		return
+	elseif cmd == "anim" or cmd == "animation" or cmd == "animations" then
+		if arg == "on" then db.animate = true
+		elseif arg == "off" then db.animate = false
+		else db.animate = not db.animate end
+		if not db.animate then ANIM.StopAll() end
+		Print("Shard animations " .. (db.animate and "on." or "off."))
 		return
 	elseif cmd == "minimap" then
 		db.minimapShown = not db.minimapShown
