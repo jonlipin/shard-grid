@@ -2161,6 +2161,19 @@ function ns.GrabBarArt()
 		return
 	end
 	ns.grabbedBar = found
+	local function Size(f)
+		local w, h = f.GetWidth and f:GetWidth(), f.GetHeight and f:GetHeight()
+		if type(w) ~= "number" or type(h) ~= "number" then return "?" end
+		return ("%.0f x %.0f"):format(w, h)
+	end
+	Print("That bar measures " .. Size(focus) .. ".")
+	if focus.GetChildren then
+		for _, child in ipairs({ focus:GetChildren() }) do
+			if child.IsShown and child:IsShown() then
+				Print("  a part of it: " .. Size(child))
+			end
+		end
+	end
 	Print("Art on that bar:")
 	for i, name in ipairs(found) do
 		Print(("  %d |cff9d9d9d[%s]|r %s"):format(i, tostring(layers[i]), name))
@@ -2212,16 +2225,17 @@ local function GetStoneRow(i)
 		end
 	end
 
+	local over = STONE.BAR_H * (7 / 34) -- the client's own bars overhang 7px at 34px tall
 	row.iconShadow = row.iconFrame:CreateTexture(nil, "BACKGROUND")
-	row.iconShadow:SetPoint("TOPLEFT", -7, 6)
-	row.iconShadow:SetPoint("BOTTOMRIGHT", 7, -7)
+	row.iconShadow:SetPoint("TOPLEFT", -over, over * 0.86)
+	row.iconShadow:SetPoint("BOTTOMRIGHT", over, -over)
 
 	row.icon = row.iconFrame:CreateTexture(nil, "ARTWORK")
 	row.icon:SetAllPoints()
 
 	row.iconOverlay = row.iconFrame:CreateTexture(nil, "OVERLAY")
-	row.iconOverlay:SetPoint("TOPLEFT", -7, 6)
-	row.iconOverlay:SetPoint("BOTTOMRIGHT", 7, -7)
+	row.iconOverlay:SetPoint("TOPLEFT", -over, over * 0.86)
+	row.iconOverlay:SetPoint("BOTTOMRIGHT", over, -over)
 
 	row.fill = CreateFrame("StatusBar", nil, row.bar)
 	row.fill:SetPoint("TOPLEFT", row.iconFrame, "TOPRIGHT", 4, -4)
