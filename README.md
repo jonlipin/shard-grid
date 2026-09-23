@@ -15,7 +15,7 @@ It is built from the game's own interface art and its options live in the game's
 ### Shard grid
 - Every Soul Shard you carry is shown as a slot in a compact, movable grid that matches the default bag window.
 - **Soul bag aware:** with a soul bag equipped, the grid shows every slot in it. Filled slots hold a shard, empty slots show how much room you have left. The title reads like `18/24`.
-- **Over the limit:** shards beyond your auto-delete limit keep the orange tint even with no soul bag, and are moved next to the free slots.
+- **Over the limit:** shards outside your soul bag are orange, and those beyond the number you asked to keep are red. Both are moved next to the free slots, and both are tinted even with no soul bag.
 - **Overflow highlighting:** shards that spilled into your normal bags are added to the end of the grid in **orange** and counted separately (`18/24 +3`), so you can tell at a glance when you are wasting bag space.
 - **Bag-like:** empty bag slots fill out the grid so it keeps a steady shape, with a minimum number of rows, and an option to put the free slots first.
 - **Resizable:** drag the corner grip to set how many columns wide the grid is, or use sliders for width, slot size and overall scale. The frame border stays intact at any size.

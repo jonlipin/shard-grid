@@ -28,7 +28,7 @@ local INSET = { left = 10, right = 8, top = 27, bottom = 9 }
 local COLOR = {
 	shard    = { 0.72, 0.35, 1.00 }, -- shard inside a soul bag
 	overflow = { 1.00, 0.38, 0.10 }, -- shard outside the soul bag
-	excess   = { 1.00, 0.38, 0.10 }, -- over your limit: same orange, just sorted to the end
+	excess   = { 1.00, 0.16, 0.14 }, -- over your limit as well, and about to be deleted
 }
 
 local DEFAULTS = {
@@ -931,9 +931,19 @@ function ANIM.StepAnimations(_, elapsed)
 			local size = a.size * (0.4 + 0.6 * t ^ 0.5)
 			a.tex:SetSize(size, size)
 			a.tex:SetAlpha(math.min(1, pos * 8))
-			if a.spin and a.tex.SetRotation then
+			local turned = a.spin and (a.spin * (1 - inv * inv))
+			if turned and a.tex.SetRotation then
 				-- Fast at first and easing off, ending on a whole turn so it lands upright.
-				a.tex:SetRotation(a.spin * (1 - inv * inv))
+				a.tex:SetRotation(turned)
+			end
+			if a.tinted then
+				-- Ordinary at first, its colour coming on through the second half.
+				a.tinted:SetSize(size, size)
+				a.tinted:ClearAllPoints()
+				a.tinted:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+				if turned and a.tinted.SetRotation then a.tinted:SetRotation(turned) end
+				local shade = math.max(0, math.min(1, (t - 0.35) / 0.55))
+				a.tinted:SetAlpha(math.min(1, pos * 8) * shade)
 			end
 			-- A glow dropped every so often along the way, fading behind it.
 			a.puff = (a.puff or 0) + elapsed
@@ -959,6 +969,10 @@ function ANIM.StepAnimations(_, elapsed)
 		if pos >= 1 then
 			a.tex:Hide()
 			a.tex.busy = false
+			if a.tinted then
+				a.tinted:Hide()
+				a.tinted.busy = false
+			end
 			if a.cell and a.arriving then
 				a.cell.animIn = nil
 				a.cell.icon:SetAlpha(1)
@@ -986,10 +1000,23 @@ function ANIM.TossIn(cell, size, tint)
 	tex.busy = true
 	tex:SetBlendMode("BLEND")
 	if tex.SetRotation then tex:SetRotation(0) end
-	tex:SetVertexColor(tint and tint[1] or 1, tint and tint[2] or 1, tint and tint[3] or 1)
-	tex:SetDesaturated(tint and true or false)
+	tex:SetVertexColor(1, 1, 1)
+	tex:SetDesaturated(false)
 	tex:SetAlpha(0)
 	tex:Show()
+
+	-- The colour it will end up, laid over the top and faded in during the flight.
+	local tinted
+	if tint then
+		tinted = ANIM.GetFlyer()
+		tinted.busy = true
+		tinted:SetBlendMode("BLEND")
+		if tinted.SetRotation then tinted:SetRotation(0) end
+		tinted:SetDesaturated(true)
+		tinted:SetVertexColor(tint[1], tint[2], tint[3])
+		tinted:SetAlpha(0)
+		tinted:Show()
+	end
 	cell.animIn = true
 	cell.icon:SetAlpha(0)
 
@@ -1015,7 +1042,7 @@ function ANIM.TossIn(cell, size, tint)
 	ANIM.Burst(x0, y0, size * rel * 2.2)
 
 	ANIM.StartAnimation({
-		tex = tex, cell = cell, size = size * rel, t = 0, dur = flight, arriving = true,
+		tex = tex, tinted = tinted, cell = cell, size = size * rel, t = 0, dur = flight, arriving = true,
 		x0 = x0, y0 = y0,
 		cx = (x0 + x1) / 2,
 		cy = math.max(y0, y1) + lift,
@@ -1049,6 +1076,10 @@ function ANIM.StopAll()
 		local a = ANIM.running[i]
 		a.tex:Hide()
 		a.tex.busy = false
+		if a.tinted then
+			a.tinted:Hide()
+			a.tinted.busy = false
+		end
 		if a.cell and a.arriving then
 			a.cell.animIn = nil
 			a.cell.icon:SetAlpha(1)
