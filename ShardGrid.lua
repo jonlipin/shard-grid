@@ -893,11 +893,12 @@ function ANIM.TossIn(cell, size, tint)
 	local angle = math.random() * 2 * math.pi
 	local reach = math.sqrt(math.random())
 	local x0 = w * 0.5 + math.cos(angle) * reach * w * 0.09
-	local y0 = h / 3 + math.sin(angle) * reach * h * 0.09
+	local y0 = h * (1 / 3 - 0.1) + math.sin(angle) * reach * h * 0.09
 
-	-- The peak of the lob sits above whichever end is higher, by more the further it travels.
+	-- The peak of the lob sits well above whichever end is higher, by more the further it
+	-- travels, so the throw carries rather than skimming across.
 	local dx, dy = x1 - x0, y1 - y0
-	local lift = math.max(h * 0.14, math.sqrt(dx * dx + dy * dy) * 0.35)
+	local lift = math.max(h * 0.24, math.sqrt(dx * dx + dy * dy) * 0.55)
 
 	-- Rotation follows the throw: clockwise going right, the other way going left. Positive
 	-- angles turn counter-clockwise, hence the sign.
