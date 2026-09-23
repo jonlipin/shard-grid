@@ -747,6 +747,7 @@ function ANIM.GetFlyer()
 	tex:SetTexture(SHARD_ICON)
 	tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 	tex:Hide()
+	ANIM.SoftenEdges(tex)
 	ANIM.pool[#ANIM.pool + 1] = tex
 	return tex
 end
@@ -805,6 +806,38 @@ function ANIM.Burst(x, y, size)
 		tex = tex, size = size, t = 0, dur = ANIM.BURST, burst = true,
 		spin = (math.random() < 0.5 and -1 or 1) * math.pi * 0.6,
 	})
+end
+
+-- The portrait mask is a circle that fades out towards its edge, which is exactly the
+-- shape wanted: the icon keeps its middle and loses its corners.
+function ANIM.MaskArt()
+	if ANIM.maskArt == nil then
+		ANIM.maskArt = false
+		local probe = ANIM.layer and ANIM.layer.CreateMaskTexture and ANIM.layer:CreateMaskTexture()
+		if probe then
+			for _, path in ipairs({
+				"Interface\\CharacterFrame\\TempPortraitAlphaMask",
+				"Interface\\Masks\\CircleMaskScalable",
+			}) do
+				probe:SetTexture(path, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+				if probe:GetTexture() then ANIM.maskArt = path break end
+			end
+			probe:Hide()
+		end
+		report["flight mask"] = ANIM.maskArt or "none on this client (square corners)"
+	end
+	return ANIM.maskArt
+end
+
+-- Give one flying texture its own mask, following it as it moves and grows.
+function ANIM.SoftenEdges(tex)
+	local art = ANIM.MaskArt()
+	if not art or not ANIM.layer.CreateMaskTexture then return end
+	local ok, mask = pcall(ANIM.layer.CreateMaskTexture, ANIM.layer)
+	if not ok or not mask then return end
+	mask:SetTexture(art, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	mask:SetAllPoints(tex)
+	pcall(tex.AddMaskTexture, tex, mask)
 end
 
 -- Something soft and round for the trail: a glow if the client has one, the same star as
