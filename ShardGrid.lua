@@ -754,15 +754,23 @@ end
 -- then a couple of textures, and a plain glow as a last resort.
 function ANIM.BurstArt()
 	if ANIM.burstArt == nil then
-		ANIM.burstArt = false
-		for _, atlas in ipairs({ "loottoast-glow", "Artifacts-StarBurst", "Azerite-PointGlow",
-			"ChallengeMode-Runes-Glow", "UI-Frame-IconGlow" }) do
-			if HasAtlas(atlas) then ANIM.burstArt = { atlas = atlas } break end
+		-- The cooldown star is a cross of light, which is the shape wanted here. If this
+		-- client has no such file, these atlases are the next best thing.
+		ANIM.burstArt = { texture = "Interface\\Cooldown\\star4" }
+		local probe = ANIM.layer and ANIM.layer:CreateTexture()
+		if probe then
+			probe:SetTexture(ANIM.burstArt.texture)
+			if not probe:GetTexture() then
+				ANIM.burstArt = nil
+				for _, atlas in ipairs({ "Artifacts-StarBurst", "UI-Achievement-Shine",
+					"loottoast-glow", "Azerite-PointGlow" }) do
+					if HasAtlas(atlas) then ANIM.burstArt = { atlas = atlas } break end
+				end
+				ANIM.burstArt = ANIM.burstArt or { plain = true }
+			end
+			probe:Hide()
 		end
-		if not ANIM.burstArt then
-			ANIM.burstArt = { texture = "Interface\\Cooldown\\star4" }
-		end
-		report["shard burst"] = ANIM.burstArt.atlas or ANIM.burstArt.texture
+		report["shard burst"] = ANIM.burstArt.atlas or ANIM.burstArt.texture or "plain light"
 	end
 	return ANIM.burstArt
 end
@@ -774,7 +782,9 @@ function ANIM.GetBurst()
 	end
 	local tex = ANIM.layer:CreateTexture(nil, "OVERLAY", nil, -1)
 	local art = ANIM.BurstArt()
-	if art.atlas then tex:SetAtlas(art.atlas) else tex:SetTexture(art.texture) end
+	if art.atlas then tex:SetAtlas(art.atlas)
+	elseif art.texture then tex:SetTexture(art.texture)
+	else tex:SetColorTexture(1, 1, 1, 1) end
 	tex:SetBlendMode("ADD")
 	tex:Hide()
 	ANIM.bursts[#ANIM.bursts + 1] = tex
@@ -820,10 +830,10 @@ function ANIM.StepAnimations(_, elapsed)
 			local y = inv * inv * a.y0 + 2 * inv * t * a.cy + t * t * a.y1
 			a.tex:ClearAllPoints()
 			a.tex:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-			-- Small and far away at first, full size as it lands.
-			local size = a.size * (0.05 + 0.95 * t ^ 1.6)
+			-- Visible the moment it leaves the burst, most of the growth happening early.
+			local size = a.size * (0.4 + 0.6 * t ^ 0.5)
 			a.tex:SetSize(size, size)
-			a.tex:SetAlpha(math.min(1, pos * 5))
+			a.tex:SetAlpha(math.min(1, pos * 8))
 			if a.spin and a.tex.SetRotation then
 				-- Fast at first and easing off, ending on a whole turn so it lands upright.
 				a.tex:SetRotation(a.spin * (1 - inv * inv))
