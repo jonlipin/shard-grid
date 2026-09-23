@@ -39,6 +39,7 @@
 - "Empty slots first" reverses the order, so free slots sit at the top.
 - Shards over your limit keep the orange tint even with no soul bag equipped, where nothing was tinted before, and they are moved next to the empty slots so the ones that go first are easy to see.
 - The count in the title bar is centered.
+- Shards are tossed into the grid when you gain one: the icon arcs in from below and grows into its slot. A spent shard flashes out of its slot. This can be turned off.
 
 **Options**
 - The options are the game's own page at Esc > Options > AddOns > Shard Grid. The cog, the minimap button, right-clicking the grid and `/shards` all open it there.
@@ -56,6 +57,7 @@
 - Fixed one label not moving when a text box above it was resized.
 - Fixed the close and minimize buttons hanging over the corner of the summon window. They were the game's default size, larger than these title bars.
 - Removed the addon's use of the combat log, which this client refuses to let addons read. It was only a second source for who cast a soulstone.
+- Fixed the soulstone tracker coming up empty after a reload. Buffs already running raise no event, so the list is now rescanned after you enter the world and every few seconds after that.
 - Anything else the client refuses is now named in chat once and listed by `/shards debug`, and the client's warning popup is dismissed. The key press watcher used for auto-delete switches itself off permanently if it is refused.
 
 ### Notes

@@ -36,6 +36,7 @@ local DEFAULTS = {
 	showEmpty = true,  -- pad the grid with empty bag slots
 	minRows = 2,       -- keep at least this many rows so the window never jumps
 	reverse = false,   -- empty slots first
+	animate = true,    -- toss shards into the grid, flash them out
 	size = 30,
 	scale = 1,
 	locked = false,
@@ -704,6 +705,7 @@ local function PaintCell(cell, data)
 	cell.bg:SetAlpha(1)
 	local c = COLOR[data.kind]
 	cell.icon:Show()
+	if not cell.animIn then cell.icon:SetAlpha(1) end
 	if data.kind == "overflow" or data.kind == "excess" then
 		cell.icon:SetDesaturated(true)
 		cell.icon:SetVertexColor(c[1], c[2], c[3])
@@ -719,6 +721,146 @@ local function PaintCell(cell, data)
 		cell.count:Show()
 	else
 		cell.count:Hide()
+	end
+end
+
+-- ------------------------------------------------------------------
+-- Shards arriving and leaving
+-- A new shard is tossed into its slot: it starts at nothing, arcs up and over, and grows to
+-- size as it lands. A spent one flashes: it swells out of its slot and fades.
+-- ------------------------------------------------------------------
+local ANIM = { pool = {}, running = {}, driver = nil, IN = 0.45, OUT = 0.3 }
+
+function ANIM.GetFlyer()
+	for _, tex in ipairs(ANIM.pool) do
+		if not tex.busy then return tex end
+	end
+	local tex = frame:CreateTexture(nil, "OVERLAY", nil, 7)
+	tex:SetTexture(SHARD_ICON)
+	tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	tex:Hide()
+	ANIM.pool[#ANIM.pool + 1] = tex
+	return tex
+end
+
+function ANIM.StepAnimations(_, elapsed)
+	for i = #ANIM.running, 1, -1 do
+		local a = ANIM.running[i]
+		a.t = a.t + elapsed
+		local pos = math.min(1, a.t / a.dur)
+		if a.arriving then
+			-- Grows quickly at first, so it reads as thrown rather than zoomed.
+			local size = a.size * (0.05 + 0.95 * pos ^ 0.55)
+			a.tex:SetSize(size, size)
+			a.tex:SetAlpha(math.min(1, pos * 4))
+			a.tex:ClearAllPoints()
+			a.tex:SetPoint("CENTER", a.cell, "CENTER",
+				a.fromX * (1 - pos),
+				a.fromY * (1 - pos) + a.arc * math.sin(math.pi * pos))
+		else
+			local size = a.size * (1 + 0.7 * pos)
+			a.tex:SetSize(size, size)
+			a.tex:SetAlpha(1 - pos * pos)
+		end
+		if pos >= 1 then
+			a.tex:Hide()
+			a.tex.busy = false
+			if a.cell and a.arriving then
+				a.cell.animIn = nil
+				a.cell.icon:SetAlpha(1)
+			end
+			table.remove(ANIM.running, i)
+		end
+	end
+	if #ANIM.running == 0 and ANIM.driver then ANIM.driver:SetScript("OnUpdate", nil) end
+end
+
+function ANIM.StartAnimation(a)
+	if not ANIM.driver then ANIM.driver = CreateFrame("Frame") end
+	ANIM.running[#ANIM.running + 1] = a
+	ANIM.driver:SetScript("OnUpdate", ANIM.StepAnimations)
+end
+
+function ANIM.TossIn(cell, size, tint)
+	local tex = ANIM.GetFlyer()
+	tex.busy = true
+	tex:SetVertexColor(tint and tint[1] or 1, tint and tint[2] or 1, tint and tint[3] or 1)
+	tex:SetDesaturated(tint and true or false)
+	tex:SetSize(1, 1)
+	tex:SetAlpha(0)
+	tex:Show()
+	cell.animIn = true
+	cell.icon:SetAlpha(0)
+	ANIM.StartAnimation({
+		tex = tex, cell = cell, size = size, t = 0, dur = ANIM.IN, arriving = true,
+		-- Thrown in from below, from one side or the other.
+		fromX = (math.random() < 0.5 and -1 or 1) * (size * 2 + math.random() * size * 3),
+		fromY = -(size * 2 + math.random() * size * 2),
+		arc = size * (1.5 + math.random()),
+	})
+end
+
+function ANIM.FlashOut(cell, size, tint)
+	local tex = ANIM.GetFlyer()
+	tex.busy = true
+	tex:SetVertexColor(tint and tint[1] or 1, tint and tint[2] or 1, tint and tint[3] or 1)
+	tex:SetDesaturated(tint and true or false)
+	tex:SetBlendMode("ADD")
+	tex:SetSize(size, size)
+	tex:SetAlpha(1)
+	tex:ClearAllPoints()
+	tex:SetPoint("CENTER", cell, "CENTER")
+	tex:Show()
+	ANIM.StartAnimation({ tex = tex, cell = cell, size = size, t = 0, dur = ANIM.OUT, arriving = false })
+end
+
+-- Work out what changed since the last refresh and play it.
+function ANIM.PlayChanges(data, count, size)
+	local before = ns.prevKinds
+	ns.prevKinds = {}
+	for i = 1, count do ns.prevKinds[i] = data[i].kind end
+	if not before or not db.animate then return end
+
+	-- Same shape: a straight comparison says exactly which slots changed.
+	if #before == count then
+		for i = 1, count do
+			local was, now = before[i], data[i].kind
+			if was ~= now and cells[i] then
+				if was == "empty" and now ~= "empty" then
+					ANIM.TossIn(cells[i], size, COLOR[now] ~= COLOR.shard and COLOR[now] or nil)
+				elseif was ~= "empty" and now == "empty" then
+					ANIM.FlashOut(cells[i], size, COLOR[was] ~= COLOR.shard and COLOR[was] or nil)
+				end
+			end
+		end
+		return
+	end
+
+	-- The grid changed shape, so fall back to counting: the newest shards sit at the end of
+	-- the filled run, and a spent one leaves the slot just past it.
+	local function Filled(list, n)
+		local total = 0
+		for i = 1, n do
+			if list[i] and list[i] ~= "empty" then total = total + 1 end
+		end
+		return total
+	end
+	local had, has = Filled(before, #before), Filled(ns.prevKinds, count)
+	local order = {}
+	for i = 1, count do
+		local j = db.reverse and (count + 1 - i) or i
+		order[#order + 1] = j
+	end
+	if has > had then
+		for k = had + 1, has do
+			local cell = cells[order[k]]
+			if cell then ANIM.TossIn(cell, size, COLOR[data[order[k]].kind] ~= COLOR.shard and COLOR[data[order[k]].kind] or nil) end
+		end
+	elseif had > has then
+		for k = has + 1, math.min(had, count) do
+			local cell = cells[order[k]]
+			if cell then ANIM.FlashOut(cell, size) end
+		end
 	end
 end
 
@@ -817,6 +959,7 @@ function Refresh()
 		cell:Show()
 	end
 	for i = n + 1, #cells do cells[i]:Hide() end
+	ANIM.PlayChanges(data, n, size)
 	ns.lastCells = data
 	emptyText:SetShown(realCount == 0 and not stats.hasSoulBag)
 
@@ -2360,6 +2503,11 @@ end
 ns.SetStage("soulstone window")
 stoneEvents:SetScript("OnEvent", function(_, event)
 	if not db or not db.stoneEnabled then return end
+	if event == "PLAYER_ENTERING_WORLD" and C_Timer and C_Timer.After then
+		for _, delay in ipairs({ 1, 3, 6 }) do
+			C_Timer.After(delay, function() if db and db.stoneEnabled then ns.UpdateStones(true) end end)
+		end
+	end
 	local was = #stones
 	ns.UpdateStones(true)
 	if db.stonePopup and #stones > was then
@@ -2369,8 +2517,16 @@ stoneEvents:SetScript("OnEvent", function(_, event)
 end)
 ns.SetStage("soulstone ticker")
 if C_Timer and C_Timer.NewTicker then
+	local tick = 0
 	C_Timer.NewTicker(1, function()
-		if stoneWin:IsShown() then ns.UpdateStones(false) end
+		tick = tick + 1
+		-- The bars tick every second; a full rescan every few seconds catches anything whose
+		-- event was missed, including everything already up when the interface reloaded.
+		if tick % 5 == 0 then
+			if db and db.stoneEnabled then ns.UpdateStones(true) end
+		elseif stoneWin:IsShown() then
+			ns.UpdateStones(false)
+		end
 	end)
 end
 ns.SetStage("config window")
@@ -2786,6 +2942,11 @@ local function BuildConfig()
 		function() return db.reverse end,
 		function(v) db.reverse = v Refresh() end,
 		"Reverses the order, so free slots sit at the top of the grid and your shards fill it from the bottom.")
+	y = y - 26
+	AddCheck(col, y, "Animate shards",
+		function() return db.animate end,
+		function(v) db.animate = v end,
+		"A new shard is tossed into its slot, growing as it arrives, and a spent one flashes out of its slot.")
 	y = y - 26
 	AddCheck(col, y, "Lock position",
 		function() return db.locked end,
