@@ -729,7 +729,7 @@ end
 -- A new shard is tossed into its slot: it starts at nothing, arcs up and over, and grows to
 -- size as it lands. A spent one flashes: it swells out of its slot and fades.
 -- ------------------------------------------------------------------
-local ANIM = { pool = {}, running = {}, driver = nil, layer = nil, IN = 0.55, OUT = 0.3 }
+local ANIM = { pool = {}, running = {}, driver = nil, layer = nil, IN = 1, OUT = 0.3 }
 
 -- Flyers live on their own frame over the whole screen, not inside the grid, so a shard can
 -- travel across the screen and still be drawn on top of what it passes.
@@ -766,9 +766,9 @@ function ANIM.StepAnimations(_, elapsed)
 		a.t = a.t + elapsed
 		local pos = math.min(1, a.t / a.dur)
 		if a.arriving then
-			-- A quadratic curve from above, bending through the middle of the screen and
-			-- down into the slot: P = (1-t)^2 * start + 2(1-t)t * middle + t^2 * slot.
-			local t = pos ^ 0.85 -- a touch of slowing as it lands
+			-- A quadratic curve: P = (1-t)^2 * start + 2(1-t)t * peak + t^2 * slot. The peak
+			-- sits above both ends, so the shard rises and then falls into place.
+			local t = pos ^ 0.9 -- a touch of slowing as it lands
 			local inv = 1 - t
 			local x = inv * inv * a.x0 + 2 * inv * t * a.cx + t * t * a.x1
 			local y = inv * inv * a.y0 + 2 * inv * t * a.cy + t * t * a.y1
@@ -824,17 +824,26 @@ function ANIM.TossIn(cell, size, tint)
 	cell.animIn = true
 	cell.icon:SetAlpha(0)
 
-	-- It starts above the top of the screen, a little either side of centre so several
-	-- shards do not follow the same line, and is pulled through the middle on its way down.
-	local jitter = w * 0.08
+	-- Thrown from the middle of the screen, a third of the way up, with a little scatter so
+	-- several shards at once do not follow the same line.
+	local x0 = w * 0.5 + (math.random() * 2 - 1) * w * 0.03
+	local y0 = h / 3 + (math.random() * 2 - 1) * h * 0.02
+
+	-- The peak of the lob sits above whichever end is higher, by more the further it travels.
+	local dx, dy = x1 - x0, y1 - y0
+	local lift = math.max(h * 0.14, math.sqrt(dx * dx + dy * dy) * 0.35)
+
+	-- Rotation follows the throw: clockwise going right, the other way going left. Positive
+	-- angles turn counter-clockwise, hence the sign.
+	local turns = math.random(1, 2) * 2 * math.pi
+
 	ANIM.StartAnimation({
 		tex = tex, cell = cell, size = size * rel, t = 0, dur = ANIM.IN, arriving = true,
-		x0 = w * 0.5 + (math.random() * 2 - 1) * jitter,
-		y0 = h + h * 0.1,
-		cx = w * 0.5,
-		cy = h * 0.5,
+		x0 = x0, y0 = y0,
+		cx = (x0 + x1) / 2,
+		cy = math.max(y0, y1) + lift,
 		x1 = x1, y1 = y1,
-		spin = math.random(1, 3) * 2 * math.pi * (math.random() < 0.5 and -1 or 1),
+		spin = (dx >= 0) and -turns or turns,
 	})
 end
 
