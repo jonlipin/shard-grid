@@ -729,7 +729,7 @@ end
 -- A new shard is tossed into its slot: it starts at nothing, arcs up and over, and grows to
 -- size as it lands. A spent one flashes: it swells out of its slot and fades.
 -- ------------------------------------------------------------------
-local ANIM = { pool = {}, running = {}, driver = nil, layer = nil, IN = 1, OUT = 0.3 }
+local ANIM = { pool = {}, bursts = {}, running = {}, driver = nil, layer = nil, IN = 1, OUT = 0.3, BURST = 0.45 }
 
 -- Flyers live on their own frame over the whole screen, not inside the grid, so a shard can
 -- travel across the screen and still be drawn on top of what it passes.
@@ -748,6 +748,52 @@ function ANIM.GetFlyer()
 	tex:Hide()
 	ANIM.pool[#ANIM.pool + 1] = tex
 	return tex
+end
+
+-- Something bright and round for the burst. Atlases can be tested for, so those come first,
+-- then a couple of textures, and a plain glow as a last resort.
+function ANIM.BurstArt()
+	if ANIM.burstArt == nil then
+		ANIM.burstArt = false
+		for _, atlas in ipairs({ "loottoast-glow", "Artifacts-StarBurst", "Azerite-PointGlow",
+			"ChallengeMode-Runes-Glow", "UI-Frame-IconGlow" }) do
+			if HasAtlas(atlas) then ANIM.burstArt = { atlas = atlas } break end
+		end
+		if not ANIM.burstArt then
+			ANIM.burstArt = { texture = "Interface\\Cooldown\\star4" }
+		end
+		report["shard burst"] = ANIM.burstArt.atlas or ANIM.burstArt.texture
+	end
+	return ANIM.burstArt
+end
+
+function ANIM.GetBurst()
+	if not ANIM.layer then ANIM.GetFlyer() end -- makes the layer
+	for _, tex in ipairs(ANIM.bursts) do
+		if not tex.busy then return tex end
+	end
+	local tex = ANIM.layer:CreateTexture(nil, "OVERLAY", nil, -1)
+	local art = ANIM.BurstArt()
+	if art.atlas then tex:SetAtlas(art.atlas) else tex:SetTexture(art.texture) end
+	tex:SetBlendMode("ADD")
+	tex:Hide()
+	ANIM.bursts[#ANIM.bursts + 1] = tex
+	return tex
+end
+
+-- A purple flash where the shard comes into being, before it is thrown.
+function ANIM.Burst(x, y, size)
+	local tex = ANIM.GetBurst()
+	tex.busy = true
+	tex:SetVertexColor(0.72, 0.35, 1)
+	tex:SetAlpha(0)
+	tex:ClearAllPoints()
+	tex:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+	tex:Show()
+	ANIM.StartAnimation({
+		tex = tex, size = size, t = 0, dur = ANIM.BURST, burst = true,
+		spin = (math.random() < 0.5 and -1 or 1) * math.pi * 0.6,
+	})
 end
 
 -- Where a frame sits, and how big it looks, in the screen's own units.
@@ -782,6 +828,12 @@ function ANIM.StepAnimations(_, elapsed)
 				-- Fast at first and easing off, ending on a whole turn so it lands upright.
 				a.tex:SetRotation(a.spin * (1 - inv * inv))
 			end
+		elseif a.burst then
+			-- Swells and fades: bright the instant it appears, gone a moment later.
+			local size = a.size * (0.6 + 3 * pos)
+			a.tex:SetSize(size, size)
+			a.tex:SetAlpha((1 - pos) * (1 - pos))
+			if a.tex.SetRotation then a.tex:SetRotation(a.spin * pos) end
 		else
 			local size = a.size * (1 + 0.7 * pos)
 			a.tex:SetSize(size, size)
@@ -836,6 +888,8 @@ function ANIM.TossIn(cell, size, tint)
 	-- Rotation follows the throw: clockwise going right, the other way going left. Positive
 	-- angles turn counter-clockwise, hence the sign.
 	local turns = math.random(1, 2) * 2 * math.pi
+
+	ANIM.Burst(x0, y0, size * rel * 2.2)
 
 	ANIM.StartAnimation({
 		tex = tex, cell = cell, size = size * rel, t = 0, dur = ANIM.IN, arriving = true,

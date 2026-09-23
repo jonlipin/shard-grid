@@ -19,7 +19,7 @@ It is built from the game's own interface art and its options live in the game's
 - **Overflow highlighting:** shards that spilled into your normal bags are added to the end of the grid in **orange** and counted separately (`18/24 +3`), so you can tell at a glance when you are wasting bag space.
 - **Bag-like:** empty bag slots fill out the grid so it keeps a steady shape, with a minimum number of rows, and an option to put the free slots first.
 - **Resizable:** drag the corner grip to set how many columns wide the grid is, or use sliders for width, slot size and overall scale. The frame border stays intact at any size.
-- **Animated:** a new shard is thrown from the middle of the screen, lobbing up and back down into its slot while it tumbles and grows, and a spent one flashes out. Can be turned off.
+- **Animated:** a purple light bursts in the middle of the screen and a new shard is thrown out of it, lobbing up and back down into its slot while it tumbles and grows. A spent one flashes out. Can be turned off.
 - Hover for a full breakdown: in soul bag, free slots, overflow, total.
 
 ### Low shard alert
