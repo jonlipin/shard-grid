@@ -39,7 +39,7 @@
 - "Empty slots first" reverses the order, so free slots sit at the top.
 - Shards over your limit keep the orange tint even with no soul bag equipped, where nothing was tinted before, and they are moved next to the empty slots so the ones that go first are easy to see.
 - The count in the title bar is centered.
-- Shards are tossed into the grid when you gain one: the icon arcs in from below and grows into its slot. A spent shard flashes out of its slot. This can be turned off.
+- Shards are tossed into the grid when you gain one: the icon drops in from above the screen, curves through the middle, tumbles as it flies and grows into its slot. A spent shard flashes out of its slot. This can be turned off.
 
 **Options**
 - The options are the game's own page at Esc > Options > AddOns > Shard Grid. The cog, the minimap button, right-clicking the grid and `/shards` all open it there.

@@ -729,18 +729,35 @@ end
 -- A new shard is tossed into its slot: it starts at nothing, arcs up and over, and grows to
 -- size as it lands. A spent one flashes: it swells out of its slot and fades.
 -- ------------------------------------------------------------------
-local ANIM = { pool = {}, running = {}, driver = nil, IN = 0.45, OUT = 0.3 }
+local ANIM = { pool = {}, running = {}, driver = nil, layer = nil, IN = 0.55, OUT = 0.3 }
 
+-- Flyers live on their own frame over the whole screen, not inside the grid, so a shard can
+-- travel across the screen and still be drawn on top of what it passes.
 function ANIM.GetFlyer()
+	if not ANIM.layer then
+		ANIM.layer = CreateFrame("Frame", nil, UIParent)
+		ANIM.layer:SetAllPoints(UIParent)
+		ANIM.layer:SetFrameStrata("HIGH")
+	end
 	for _, tex in ipairs(ANIM.pool) do
 		if not tex.busy then return tex end
 	end
-	local tex = frame:CreateTexture(nil, "OVERLAY", nil, 7)
+	local tex = ANIM.layer:CreateTexture(nil, "OVERLAY")
 	tex:SetTexture(SHARD_ICON)
 	tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 	tex:Hide()
 	ANIM.pool[#ANIM.pool + 1] = tex
 	return tex
+end
+
+-- Where a frame sits, and how big it looks, in the screen's own units.
+function ANIM.OnScreen(f)
+	local ui = UIParent:GetEffectiveScale()
+	if not ui or ui <= 0 then return end
+	local rel = (f:GetEffectiveScale() or ui) / ui
+	local x, y = f:GetCenter()
+	if not x or not y then return end
+	return x * rel, y * rel, rel
 end
 
 function ANIM.StepAnimations(_, elapsed)
@@ -749,14 +766,22 @@ function ANIM.StepAnimations(_, elapsed)
 		a.t = a.t + elapsed
 		local pos = math.min(1, a.t / a.dur)
 		if a.arriving then
-			-- Grows quickly at first, so it reads as thrown rather than zoomed.
-			local size = a.size * (0.05 + 0.95 * pos ^ 0.55)
-			a.tex:SetSize(size, size)
-			a.tex:SetAlpha(math.min(1, pos * 4))
+			-- A quadratic curve from above, bending through the middle of the screen and
+			-- down into the slot: P = (1-t)^2 * start + 2(1-t)t * middle + t^2 * slot.
+			local t = pos ^ 0.85 -- a touch of slowing as it lands
+			local inv = 1 - t
+			local x = inv * inv * a.x0 + 2 * inv * t * a.cx + t * t * a.x1
+			local y = inv * inv * a.y0 + 2 * inv * t * a.cy + t * t * a.y1
 			a.tex:ClearAllPoints()
-			a.tex:SetPoint("CENTER", a.cell, "CENTER",
-				a.fromX * (1 - pos),
-				a.fromY * (1 - pos) + a.arc * math.sin(math.pi * pos))
+			a.tex:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+			-- Small and far away at first, full size as it lands.
+			local size = a.size * (0.05 + 0.95 * t ^ 1.6)
+			a.tex:SetSize(size, size)
+			a.tex:SetAlpha(math.min(1, pos * 5))
+			if a.spin and a.tex.SetRotation then
+				-- Fast at first and easing off, ending on a whole turn so it lands upright.
+				a.tex:SetRotation(a.spin * (1 - inv * inv))
+			end
 		else
 			local size = a.size * (1 + 0.7 * pos)
 			a.tex:SetSize(size, size)
@@ -782,37 +807,54 @@ function ANIM.StartAnimation(a)
 end
 
 function ANIM.TossIn(cell, size, tint)
+	local x1, y1, rel = ANIM.OnScreen(cell)
+	if not x1 then return end -- not laid out yet, so nowhere to fly to
+
+	local w, h = UIParent:GetWidth() or 0, UIParent:GetHeight() or 0
+	if w <= 0 or h <= 0 then return end
+
 	local tex = ANIM.GetFlyer()
 	tex.busy = true
+	tex:SetBlendMode("BLEND")
+	if tex.SetRotation then tex:SetRotation(0) end
 	tex:SetVertexColor(tint and tint[1] or 1, tint and tint[2] or 1, tint and tint[3] or 1)
 	tex:SetDesaturated(tint and true or false)
-	tex:SetSize(1, 1)
 	tex:SetAlpha(0)
 	tex:Show()
 	cell.animIn = true
 	cell.icon:SetAlpha(0)
+
+	-- It starts above the top of the screen, a little either side of centre so several
+	-- shards do not follow the same line, and is pulled through the middle on its way down.
+	local jitter = w * 0.08
 	ANIM.StartAnimation({
-		tex = tex, cell = cell, size = size, t = 0, dur = ANIM.IN, arriving = true,
-		-- Thrown in from below, from one side or the other.
-		fromX = (math.random() < 0.5 and -1 or 1) * (size * 2 + math.random() * size * 3),
-		fromY = -(size * 2 + math.random() * size * 2),
-		arc = size * (1.5 + math.random()),
+		tex = tex, cell = cell, size = size * rel, t = 0, dur = ANIM.IN, arriving = true,
+		x0 = w * 0.5 + (math.random() * 2 - 1) * jitter,
+		y0 = h + h * 0.1,
+		cx = w * 0.5,
+		cy = h * 0.5,
+		x1 = x1, y1 = y1,
+		spin = math.random(1, 3) * 2 * math.pi * (math.random() < 0.5 and -1 or 1),
 	})
 end
 
 function ANIM.FlashOut(cell, size, tint)
+	local _, _, rel = ANIM.OnScreen(cell)
 	local tex = ANIM.GetFlyer()
 	tex.busy = true
 	tex:SetVertexColor(tint and tint[1] or 1, tint and tint[2] or 1, tint and tint[3] or 1)
 	tex:SetDesaturated(tint and true or false)
 	tex:SetBlendMode("ADD")
-	tex:SetSize(size, size)
+	if tex.SetRotation then tex:SetRotation(0) end
+	tex:SetSize(size * (rel or 1), size * (rel or 1))
 	tex:SetAlpha(1)
 	tex:ClearAllPoints()
 	tex:SetPoint("CENTER", cell, "CENTER")
 	tex:Show()
-	ANIM.StartAnimation({ tex = tex, cell = cell, size = size, t = 0, dur = ANIM.OUT, arriving = false })
+	ANIM.StartAnimation({ tex = tex, size = size * (rel or 1), t = 0, dur = ANIM.OUT, arriving = false })
 end
+
+ns.ANIM = ANIM -- exposed so the offline tests can check the flight path
 
 -- Work out what changed since the last refresh and play it.
 function ANIM.PlayChanges(data, count, size)
