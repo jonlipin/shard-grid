@@ -57,6 +57,7 @@
 - Fixed one label not moving when a text box above it was resized.
 - Fixed the close and minimize buttons hanging over the corner of the summon window. They were the game's default size, larger than these title bars.
 - Removed the addon's use of the combat log, which this client refuses to let addons read. It was only a second source for who cast a soulstone.
+- Fixed the grid, and the shard animation with it, lagging behind a shard actually arriving. It was waiting on the game's batched bag update rather than the immediate one.
 - Fixed the soulstone tracker coming up empty after a reload. Buffs already running raise no event, so the list is now rescanned after you enter the world and every few seconds after that.
 - Anything else the client refuses is now named in chat once and listed by `/shards debug`, and the client's warning popup is dismissed. The key press watcher used for auto-delete switches itself off permanently if it is refused.
 

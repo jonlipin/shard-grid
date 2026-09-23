@@ -3788,8 +3788,12 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2)
 		ns.UpdateMinimapButton()
 	end
 	if event == "BAG_UPDATE_DELAYED" or event == "BAG_UPDATE" then awaitingUpdate = false end
-	if event == "BAG_UPDATE" and report["event:BAG_UPDATE_DELAYED"] == "ok" then
-		return -- the delayed event covers it in one pass
+	if event == "BAG_UPDATE" then
+		local now = GetTime()
+		if ns.lastBagRefresh and now - ns.lastBagRefresh < 0.05 then
+			return -- several bags update together; one pass covers them
+		end
+		ns.lastBagRefresh = now
 	end
 	Refresh()
 	ns.SyncConfig()
