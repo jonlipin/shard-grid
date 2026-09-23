@@ -729,7 +729,8 @@ end
 -- A new shard is tossed into its slot: it starts at nothing, arcs up and over, and grows to
 -- size as it lands. A spent one flashes: it swells out of its slot and fades.
 -- ------------------------------------------------------------------
-local ANIM = { pool = {}, bursts = {}, running = {}, driver = nil, layer = nil, IN = 1, OUT = 0.3, BURST = 0.45 }
+local ANIM = { pool = {}, bursts = {}, trails = {}, running = {},
+	driver = nil, layer = nil, IN = 1, OUT = 0.3, BURST = 0.45, TRAIL = 0.32 }
 
 -- Flyers live on their own frame over the whole screen, not inside the grid, so a shard can
 -- travel across the screen and still be drawn on top of what it passes.
@@ -806,6 +807,63 @@ function ANIM.Burst(x, y, size)
 	})
 end
 
+-- Something soft and round for the trail: a glow if the client has one, the same star as
+-- the burst if not, and plain light as a last resort.
+function ANIM.TrailArt()
+	if ANIM.trailArt == nil then
+		local found
+		local probe = ANIM.layer and ANIM.layer:CreateTexture()
+		if probe then
+			for _, path in ipairs({
+				"Interface\\GLUES\\MODELS\\UI_Draenei\\GenericGlow64",
+				"Interface\\SpellActivationOverlay\\IconAlert",
+				"Interface\\Cooldown\\star4",
+			}) do
+				probe:SetTexture(path)
+				if probe:GetTexture() then found = { texture = path } break end
+			end
+			probe:Hide()
+		end
+		if not found then
+			for _, atlas in ipairs({ "loottoast-glow", "Azerite-PointGlow", "UI-Frame-IconGlow" }) do
+				if HasAtlas(atlas) then found = { atlas = atlas } break end
+			end
+		end
+		ANIM.trailArt = found or { plain = true }
+		report["shard trail"] = ANIM.trailArt.atlas or ANIM.trailArt.texture or "plain light"
+	end
+	return ANIM.trailArt
+end
+
+function ANIM.GetTrail()
+	if not ANIM.layer then ANIM.GetFlyer() end
+	for _, tex in ipairs(ANIM.trails) do
+		if not tex.busy then return tex end
+	end
+	local tex = ANIM.layer:CreateTexture(nil, "OVERLAY", nil, -2)
+	local art = ANIM.TrailArt()
+	if art.atlas then tex:SetAtlas(art.atlas)
+	elseif art.texture then tex:SetTexture(art.texture)
+	else tex:SetColorTexture(1, 1, 1, 1) end
+	tex:SetBlendMode("ADD")
+	tex:Hide()
+	ANIM.trails[#ANIM.trails + 1] = tex
+	return tex
+end
+
+-- One puff of the trail, left behind where the shard just was.
+function ANIM.Puff(x, y, size)
+	local tex = ANIM.GetTrail()
+	tex.busy = true
+	tex:SetVertexColor(0.66, 0.3, 1)
+	tex:SetSize(size, size)
+	tex:SetAlpha(0.55)
+	tex:ClearAllPoints()
+	tex:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+	tex:Show()
+	ANIM.StartAnimation({ tex = tex, size = size, t = 0, dur = ANIM.TRAIL, trail = true })
+end
+
 -- Where a frame sits, and how big it looks, in the screen's own units.
 function ANIM.OnScreen(f)
 	local ui = UIParent:GetEffectiveScale()
@@ -838,6 +896,16 @@ function ANIM.StepAnimations(_, elapsed)
 				-- Fast at first and easing off, ending on a whole turn so it lands upright.
 				a.tex:SetRotation(a.spin * (1 - inv * inv))
 			end
+			-- A glow dropped every so often along the way, fading behind it.
+			a.puff = (a.puff or 0) + elapsed
+			if a.puff >= 0.035 and pos < 0.96 then
+				a.puff = 0
+				ANIM.Puff(x, y, size * 1.5)
+			end
+		elseif a.trail then
+			local size = a.size * (1 - 0.5 * pos)
+			a.tex:SetSize(size, size)
+			a.tex:SetAlpha(0.55 * (1 - pos) * (1 - pos))
 		elseif a.burst then
 			-- Swells and fades: bright the instant it appears, gone a moment later.
 			local size = a.size * (0.6 + 3 * pos)
