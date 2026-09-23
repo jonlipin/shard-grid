@@ -37,6 +37,7 @@ local DEFAULTS = {
 	minRows = 2,       -- keep at least this many rows so the window never jumps
 	reverse = false,   -- empty slots first
 	animate = true,    -- toss shards into the grid, flash them out
+	landSound = true,  -- a small click as one lands
 	size = 30,
 	scale = 1,
 	locked = false,
@@ -976,6 +977,7 @@ function ANIM.StepAnimations(_, elapsed)
 			if a.cell and a.arriving then
 				a.cell.animIn = nil
 				a.cell.icon:SetAlpha(1)
+				ANIM.LandSound()
 			end
 			table.remove(ANIM.running, i)
 		end
@@ -1069,6 +1071,18 @@ function ANIM.FlashOut(cell, size, tint)
 end
 
 ns.ANIM = ANIM -- exposed so the offline tests can check the flight path
+
+-- Several shards can land within a few frames of each other, so the click is rationed to
+-- one per moment rather than played for every single arrival.
+function ANIM.LandSound()
+	if not db or not db.landSound or not db.animate then return end
+	local now = GetTime()
+	if ANIM.lastClick and now - ANIM.lastClick < 0.12 then return end
+	ANIM.lastClick = now
+	local id = (SOUNDKIT and SOUNDKIT.PUT_DOWN_GEMS) or 1221
+	local ok, played = pcall(PlaySound, id, "SFX")
+	report["landing sound"] = ok and (played and "ok" or "not played (muted?)") or "unavailable"
+end
 
 -- Clear anything in flight, and give the slots their icons back.
 function ANIM.StopAll()
@@ -3217,6 +3231,11 @@ local function BuildConfig()
 		function() return db.reverse end,
 		function(v) db.reverse = v Refresh() end,
 		"Reverses the order, so free slots sit at the top of the grid and your shards fill it from the bottom.")
+	y = y - 26
+	AddCheck(col, y, "Play a sound as a shard lands",
+		function() return db.landSound end,
+		function(v) db.landSound = v if v then ANIM.LandSound() end end,
+		"A small click as each shard settles into its slot. Several landing together share one click.")
 	y = y - 26
 	AddCheck(col, y, "Animate shards",
 		function() return db.animate end,
