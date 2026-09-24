@@ -49,6 +49,7 @@
 - The cog can use any of the interface's own settings icons: `/shards cog` steps through the ones your client has, `/shards cog list` shows them, and `/shards cog grab` copies the art from any button you point at.
 
 ### Fixes
+- Fixed a soul bag equipped in the reagent slot being invisible, along with every shard in it. Only the four ordinary bag slots were being read.
 - Fixed "Interface action failed because of an AddOn" followed by auto-delete switching itself off. The game allows one item deletion per key press or click, so extras are now removed one stack at a time.
 - Fixed the cog, the grid's resize grip and the summon window's minimize button being invisible. They were being covered by their own window's border art.
 - Fixed editing a message box saving the default text into your settings, which stopped later improvements to that default from ever reaching you.

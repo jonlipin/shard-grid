@@ -12,7 +12,10 @@ local report = {}
 local SHARD_ID = 6265
 local SHARD_ICON = "Interface\\Icons\\INV_Misc_Gem_Amethyst_02"
 local SOUL_BAG_FAMILY = 4 -- bag family bit for Soul Bags
-local MAX_BAG = NUM_BAG_SLOTS or 4
+local MAX_BAG = math.max(
+	NUM_TOTAL_EQUIPPED_BAG_SLOTS or 0,
+	(NUM_BAG_SLOTS or 4) + 1,
+	(Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5)
 local MIN_COLS, MAX_COLS = 1, 24
 local KEEP_MAX = 40 -- top of the "extra shards to keep" slider
 
@@ -3962,6 +3965,7 @@ end
 
 local function Debug()
 	Print("debug:")
+	Print(("  scanning bags 0 to %d"):format(MAX_BAG))
 	for bag = 0, MAX_BAG do
 		local slots = GetNumSlots(bag) or 0
 		local free, family = GetNumFreeSlots(bag)
