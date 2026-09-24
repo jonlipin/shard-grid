@@ -32,7 +32,7 @@ Turn on the floating summon button if you would rather work from the unit frames
 
 Both messages are yours to edit, with placeholders for the player's name, your zone, subzone, minimap zone text, coordinates and shards left. Each has a Test button, so you can check the wording before a stranger reads it.
 
-**Soulstones.** The tracker opens itself when a stone is cast and lists who is carrying one, longest remaining first. Turn on the announcement if you want the group told when you stone someone. Only your own casts are announced, so several Warlocks will not repeat each other.
+**Soulstones.** The tracker opens itself when a stone is cast and lists who is carrying one, longest remaining first. Its Report button reads the whole list out to raid or party chat, names, casters and time left, which is the quickest way to answer "who has stones?". Turn on the announcement if you want the group told as you stone each person. Only your own casts are announced, so several Warlocks will not repeat each other.
 
 **Healthstones.** With the trade options on, opening a trade puts a Healthstone straight into it, and offers a button to conjure one if you have none. You still press Trade yourself.
 
@@ -53,6 +53,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 | `/shards summons` | Open or close the summon request window |
 | `/shards summons test` | Add a fake request to preview the window |
 | `/shards stones` | Open or close the soulstone tracker |
+| `/shards stones report` | Post the soulstone list to raid or party chat |
 | `/shards minimap` | Toggle the minimap button |
 | `/shards cog` / `cog list` / `cog grab` | Change the options icon, or copy one off any button |
 | `/shards bar grab` / `bar reset` | Copy a bar's art for the soulstone bars, or restore it |

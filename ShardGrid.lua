@@ -2359,6 +2359,23 @@ stoneWin:SetWidth(STONE.W)
 stoneWin:Hide()
 stoneWin.sgTitle:SetText("Soulstones")
 
+stoneWin.reportBtn = CreateFrame("Button", nil, stoneWin, "UIPanelButtonTemplate")
+stoneWin.reportBtn:SetSize(58, TITLE_BUTTON - 4)
+if stoneWin.sgClose then
+	stoneWin.reportBtn:SetPoint("RIGHT", stoneWin.sgClose, "LEFT", -2, 0)
+else
+	stoneWin.reportBtn:SetPoint("TOPRIGHT", -28, -5)
+end
+stoneWin.reportBtn:SetText("Report")
+stoneWin.reportBtn:SetScript("OnClick", function() ns.ReportStones() end)
+stoneWin.reportBtn:SetScript("OnEnter", function(self)
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+	GameTooltip:SetText("Report soulstones", 1, 1, 1)
+	GameTooltip:AddLine("Posts who is carrying a soulstone, who cast it and how long is left, to raid or party chat.", nil, nil, nil, true)
+	GameTooltip:Show()
+end)
+stoneWin.reportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 local stoneContent = CreateFrame("Frame", nil, stoneWin)
 stoneContent:SetPoint("TOPLEFT", INSET.left, -INSET.top)
 stoneContent:SetPoint("BOTTOMRIGHT", -INSET.right, INSET.bottom)
@@ -2738,11 +2755,46 @@ function ns.UpdateStones(rescan)
 	stoneEmpty:SetShown(n == 0)
 
 	stoneWin.sgTitle:SetText(n > 0 and ("Soulstones (" .. n .. ")") or "Soulstones")
+	if not stoneWin.sgRaised then
+		stoneWin.sgRaised = true
+		ns.RaiseWithinParent(stoneWin.reportBtn, stoneWin)
+	end
 	stoneWin:SetHeight(math.max(MIN_H, INSET.top + math.max(1, n) * STONE.ROW_H + 6 + INSET.bottom))
 	if not stoneWin:IsShown() then
 		RestoreStonePosition()
 		stoneWin:Show()
 	end
+end
+
+-- Read the list out to the group. Chat takes a limited number of characters, so the entries
+-- are packed into as few lines as they fit into rather than one message each.
+function ns.ReportStones()
+	local channel = GroupChannel()
+	local function Say(line)
+		if channel then SendChat(line, channel) else Print(line) end
+	end
+
+	ns.UpdateStones(true)
+	if #stones == 0 then
+		Say("Soulstones: nobody in the group has one.")
+		return
+	end
+
+	local now = GetTime()
+	local line, count = "Soulstones:", 0
+	for _, st in ipairs(stones) do
+		local caster = st.caster and ShortName(st.caster)
+		local entry = ("%s %s"):format(st.short, TimeLeft((st.expires or 0) - now))
+		if caster and caster ~= st.short then entry = entry .. " (from " .. caster .. ")" end
+		local joined = (count == 0) and (line .. " " .. entry) or (line .. ", " .. entry)
+		if #joined > 230 then
+			Say(line)
+			line, count = entry, 1
+		else
+			line, count = joined, count + 1
+		end
+	end
+	Say(line)
 end
 
 function ns.ToggleStoneWindow()
@@ -3960,7 +4012,7 @@ local function Help()
 	Print("  /shards alert N (threshold) | alert on | alert off")
 	Print("  /shards sound ID | minimap (toggle button)")
 	Print("  /shards summons (summon request window) | summons test (add a fake request)")
-	Print("  /shards stones (soulstone tracker)")
+	Print("  /shards stones (soulstone tracker) | stones report (tell the group who is stoned)")
 	Print("  /shards cog (next cog art) | cog list | cog grab (copy the art you are pointing at)")
 	Print("  /shards bar grab (copy a bar's art for the soulstone bars) | bar reset")
 	Print("  /shards anim (shards flying into the grid) | anim on | anim off")
@@ -4030,6 +4082,9 @@ SlashCmdList["SHARDGRID"] = function(msg)
 		else
 			ns.ToggleSummonWindow()
 		end
+		return
+	elseif cmd == "stones" and arg == "report" then
+		ns.ReportStones()
 		return
 	elseif cmd == "stones" or cmd == "soulstones" then
 		ns.ToggleStoneWindow()
