@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Shard Grid
-## Notes: Your Soul Shards, on screen and out of your way: a bag-style grid, a low shard alert, summon requests, a soulstone tracker and Healthstone trades.|n|cff00ccff/shards|r for options.
+## Notes: Everything you do with Soul Shards in one small window: a bag-style grid, a low shard alert, summon requests, a soulstone tracker and Healthstone trades.|n|cff00ccff/shards|r for options.
 ## Author: Jon
-## Version: 1.3.0
+## Version: 1.4.0
 ## LoadSavedVariablesFirst: 1
 ## SavedVariablesPerCharacter: ShardGridDB
 ## IconTexture: Interface\Icons\INV_Misc_Gem_Amethyst_02

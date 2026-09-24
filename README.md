@@ -1,40 +1,42 @@
 # Shard Grid
 
-**Your Soul Shards, on screen and out of your way.**
+**Everything you do with Soul Shards, in one small window.**
 
-Shard Grid puts your shards where you can see them: a small bag-style grid that fills as you collect and empties as you spend. It warns you before you run dry, clears out the ones cluttering your bags, and then handles the three things shards are actually for.
+Shards are the one resource a Warlock is always counting, and the game gives you nothing to count them with. Shard Grid puts them on screen as a bag-style grid that fills as you collect and empties as you spend, tells you before you run dry, and quietly clears out the ones cluttering your bags.
 
-- **Summons.** Requests stop scrolling past in chat. They queue up in a list, and one click summons the player, tells your group where you are and asks for clickers.
-- **Soulstones.** Who has one, who cast it and how long it has left, on bars built from the game's own cooldown art.
-- **Healthstones.** Handed over the moment a trade opens, or conjured on the spot if you have none.
+Then it handles what the shards are actually for.
 
-Everything is drawn with the interface's own art and its options live in the game's own settings panel, so it looks like part of the UI rather than something bolted on.
+- **Summons.** Requests stop scrolling past in chat and queue up in a list instead. One click summons the player, whispers them, and tells your group where you are and that you need clickers.
+- **Soulstones.** Who is carrying one, who cast it and how long is left, on bars built from the game's own cooldown art. One button reports the lot to your raid.
+- **Healthstones.** Passed over the moment a trade window opens, or conjured on the spot when you have none to give.
+
+It is drawn with the interface's own art and its options live in the game's own settings panel, so it looks like part of the UI rather than something bolted onto it. No dependencies, no libraries, one file.
 
 ## Getting started
 
 1. Extract the download into your `Interface\AddOns` folder. You should end up with a `ShardGrid` folder containing `ShardGrid.toc`.
 2. Log in on a Warlock. The grid appears by itself.
-3. Type `/shards` to open the options, or click the minimap button.
+3. Type `/shards` for the options, or click the minimap button.
 
 Drag the grid where you want it, and drag the grip in its corner to set how many columns wide it is. Everything else has a sensible default, so you can stop there if you like.
 
 ## How to use it
 
-**Watching your shards.** Filled slots are shards, dim slots are room to spare. With a soul bag equipped the grid shows its capacity and the title reads `18/24`. Shards that have spilled into your normal bags are orange, and any past the number you have chosen to keep are red. Hover the grid for the full breakdown. Each new shard is thrown into its slot and each spent one flashes out, which you can switch off with `/shards anim`.
+**Reading the grid.** Filled slots are shards, dim slots are room to spare, and the title counts them. With a soul bag the title reads `9/14`, and shards sitting in your ordinary bags are added on the end in orange, with any past the number you have chosen to keep in red. Shards stay packed together, so the slot that empties when you spend one is always the one against the free space. Hover the grid for the full breakdown.
 
-**Never running dry.** Turn on the low shard alert and pick a threshold. A separate icon appears and pulses whenever you drop below it, so you find out before you are standing at a summoning stone with nothing to spend. Drag the icon anywhere; tick "Show alert now" if you want to place it without waiting to run low.
+**Not running dry.** Turn on the low shard alert and pick a threshold. A separate icon appears and pulses whenever you drop below it, so you find out at the bank rather than at a summoning stone. Drag it wherever you want, and tick "Show alert now" to place it without waiting to run low.
 
-**Clearing the clutter.** Tick "Auto-delete extra shards" and set how many you want beyond your soul bag's capacity. Anything over that is destroyed for you, and only ever from your normal bags. The allowance sits at maximum while auto-delete is off, so switching it on never deletes anything by surprise: turn it on first, then lower the slider. Because the game only allows an addon to destroy an item during a real key press or click, extras go one at a time on your next key press, or when you click the grid.
+**Clearing the clutter.** Tick "Auto-delete extra shards" and say how many you want beyond your soul bag's capacity. Anything over that is destroyed, and only ever from your ordinary bags. The allowance sits at its maximum while auto-delete is off, so switching it on never deletes anything by surprise: turn it on first, then bring the slider down. The game only lets an addon destroy an item during a real key press or click, so extras go one at a time as you play, or when you click the grid.
 
-**Summoning.** Leave "Watch chat for summon requests" on and the window fills itself as people ask. Click a name to summon that player: it targets them, casts, whispers them that it is coming and posts your location to the group with a request for two clickers. Someone who whispered from outside your group gets an Invite button first. Names clear themselves once the player arrives.
+**Summoning.** Leave "Watch chat for summon requests" on and the window fills itself as people ask. Click a name to summon that player: it targets them, casts, whispers them that it is on the way, and posts your location to the group with a request for two clickers. Anyone who whispered from outside your group gets an Invite button first, and names clear themselves once the player arrives.
 
-Turn on the floating summon button if you would rather work from the unit frames: target or hover a party member and click it. With nobody targeted it summons whoever has waited longest.
+If you would rather work from the unit frames, turn on the floating summon button: target or hover a party member and click it. With nobody targeted it summons whoever has waited longest.
 
-Both messages are yours to edit, with placeholders for the player's name, your zone, subzone, minimap zone text, coordinates and shards left. Each has a Test button, so you can check the wording before a stranger reads it.
+Both messages are yours to edit, with placeholders for the player's name, your zone, subzone, minimap zone text, coordinates and shards left. Each has a Test button, so you can read the wording before a stranger does.
 
-**Soulstones.** The tracker opens itself when a stone is cast and lists who is carrying one, longest remaining first. The speech bubble at its top left reads the whole list out to raid or party chat, names, casters and time left, which is the quickest way to answer "who has stones?". Turn on the announcement if you want the group told as you stone each person. Only your own casts are announced, so several Warlocks will not repeat each other.
+**Soulstones.** The tracker opens itself when a stone is cast and lists everyone carrying one, longest remaining first. The speech bubble at its top left reports the whole list to raid or party chat, names, casters and times, which is the quickest way to answer "who has stones?". Turn on the announcement if you would rather the group were told as you stone each person; only your own casts are announced, so several Warlocks will not repeat each other.
 
-**Healthstones.** With the trade options on, opening a trade puts a Healthstone straight into it, and offers a button to conjure one if you have none. You still press Trade yourself.
+**Healthstones.** With the trade options on, opening a trade drops a Healthstone straight into it, and offers a button to conjure one when you have none. You still press Trade yourself.
 
 ## Commands
 
@@ -62,8 +64,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 
 ## Notes
 
-- No dependencies, no libraries, one file.
 - Settings are saved per character.
 - Made for Warlocks. On other classes the grid stays hidden unless you are carrying Soul Shards.
-- Some of what this addon does, destroying an item or casting a spell, is only allowed by the game during a real key press or click. Where that matters it is explained in the options rather than failing quietly.
+- Some of what this addon does, destroying an item or casting a spell, is only allowed by the game during a real key press or click, and the summon list is locked while you are in combat. Where that matters it is explained in the options rather than failing quietly.
 - Found a bug? Include the output of `/shards debug` with your report.

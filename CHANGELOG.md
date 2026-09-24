@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 (2026-09-24)
+
+### New
+- A report button on the soulstone window, the speech bubble at its top left, posts the current assignments to raid or party chat: who is carrying a stone, who cast it and how long is left. Also at `/shards stones report`.
+
+### Fixes
+- Fixed a soul bag equipped in the reagent slot being invisible, along with every shard in it. The addon read only the four ordinary bag slots, and this client puts a soul bag in the reagent slot beside them.
+- Fixed a spent shard emptying a slot in the middle of the grid. The grid mirrored the soul bag slot for slot, so it inherited the gaps the game left behind. Shards are now kept together with the free slots after them, so the slot that empties is always the one against the empty space.
+- American spelling throughout.
+
 ## 1.3.0 (2026-09-23)
 
 ### New
@@ -29,7 +39,6 @@
 - The name of whoever holds the soulstone sits on the bar with the timer, and who cast it sits above it on the right.
 - Soulstones are sorted with the most time remaining first.
 - New option: tell your party or raid when you soulstone someone. Only stones you cast are announced.
-- A report button on the soulstone window, a speech bubble at its top left, posts the current assignments to raid or party chat: who is carrying one, who cast it and how long is left. Also at `/shards stones report`.
 
 **Healthstones**
 - Optional: when a trade window opens and you have a Healthstone, it is placed into the trade for you. By default only for players in your group. You still confirm the trade.
@@ -50,8 +59,6 @@
 - The cog can use any of the interface's own settings icons: `/shards cog` steps through the ones your client has, `/shards cog list` shows them, and `/shards cog grab` copies the art from any button you point at.
 
 ### Fixes
-- Fixed a spent shard emptying a slot in the middle of the grid. The grid mirrored the soul bag slot for slot, so it inherited the gaps the game left; shards are now kept together with the free slots after them, and the one that goes is always the one against the empty space.
-- Fixed a soul bag equipped in the reagent slot being invisible, along with every shard in it. Only the four ordinary bag slots were being read.
 - Fixed "Interface action failed because of an AddOn" followed by auto-delete switching itself off. The game allows one item deletion per key press or click, so extras are now removed one stack at a time.
 - Fixed the cog, the grid's resize grip and the summon window's minimize button being invisible. They were being covered by their own window's border art.
 - Fixed editing a message box saving the default text into your settings, which stopped later improvements to that default from ever reaching you.
