@@ -2361,14 +2361,21 @@ stoneWin.sgTitle:SetText("Soulstones")
 
 stoneWin.reportBtn = CreateFrame("Button", nil, stoneWin)
 stoneWin.reportBtn:SetSize(TITLE_BUTTON - 2, TITLE_BUTTON - 2)
-stoneWin.reportBtn:SetPoint("TOPLEFT", 5, -3)
+stoneWin.reportBtn:SetPoint("TOPLEFT", INSET.left - 1, -4)
 stoneWin.reportBtn:SetScript("OnClick", function() ns.ReportStones() end)
 
 do
+	-- The same slot art the grid uses, so the button belongs to the interface.
+	local slot = stoneWin.reportBtn:CreateTexture(nil, "BACKGROUND")
+	slot:SetAllPoints()
+	StyleSlotBackground(slot)
+	stoneWin.reportBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+
 	-- A speech bubble: saying the list out loud to the group. Atlases can be tested for, so
 	-- they come first, then the interface's own gossip bubble, then a scroll.
 	local icon = stoneWin.reportBtn:CreateTexture(nil, "ARTWORK")
-	icon:SetAllPoints()
+	icon:SetPoint("TOPLEFT", 2, -2)
+	icon:SetPoint("BOTTOMRIGHT", -2, 2)
 	local used
 	for _, atlas in ipairs({ "communities-icon-chat", "UI-HUD-MicroMenu-Communities-Up", "chatframe-button-icon-speech" }) do
 		if HasAtlas(atlas) then icon:SetAtlas(atlas) used = "atlas " .. atlas break end
