@@ -20,7 +20,7 @@ Drag the grid where you want it, and drag the grip in its corner to set how many
 
 ## How to use it
 
-**Watching your shards.** Filled slots are shards, dim slots are room to spare. With a soul bag equipped the grid mirrors its slots and the title reads `18/24`. Shards that have spilled into your normal bags are orange, and any past the number you have chosen to keep are red. Hover the grid for the full breakdown. Each new shard is thrown into its slot and each spent one flashes out, which you can switch off with `/shards anim`.
+**Watching your shards.** Filled slots are shards, dim slots are room to spare. With a soul bag equipped the grid shows its capacity and the title reads `18/24`. Shards that have spilled into your normal bags are orange, and any past the number you have chosen to keep are red. Hover the grid for the full breakdown. Each new shard is thrown into its slot and each spent one flashes out, which you can switch off with `/shards anim`.
 
 **Never running dry.** Turn on the low shard alert and pick a threshold. A separate icon appears and pulses whenever you drop below it, so you find out before you are standing at a summoning stone with nothing to spend. Drag the icon anywhere; tick "Show alert now" if you want to place it without waiting to run low.
 

@@ -171,7 +171,7 @@ end
 
 -- Returns a list of cells { kind = "shard"|"empty"|"overflow", count = n } plus totals.
 local function Scan()
-	local cells, overflow = {}, {}
+	local cells, overflow, inBag = {}, {}, {}
 	local stats = { soulSlots = 0, inSoul = 0, outside = 0, free = 0, hasSoulBag = false }
 	for bag = 0, MAX_BAG do
 		local slots = GetNumSlots(bag) or 0
@@ -187,10 +187,9 @@ local function Scan()
 					if id then
 						local n = GetSlotInfo(bag, slot)
 						stats.inSoul = stats.inSoul + n
-						cells[#cells + 1] = { kind = "shard", count = n }
+						inBag[#inBag + 1] = { kind = "shard", count = n }
 					else
 						stats.free = stats.free + 1
-						cells[#cells + 1] = { kind = "empty" }
 					end
 				elseif id == SHARD_ID then
 					local n = GetSlotInfo(bag, slot)
@@ -200,11 +199,16 @@ local function Scan()
 			end
 		end
 	end
+	-- Shards first, whatever bag they are in, and the soul bag's free slots after them.
+	for _, c in ipairs(inBag) do cells[#cells + 1] = c end
+
 	-- Without a soul bag nothing is "overflow": loose shards are just shards.
 	for _, c in ipairs(overflow) do
 		if not stats.hasSoulBag then c.kind = "shard" end
 		cells[#cells + 1] = c
 	end
+
+	for _ = 1, stats.free do cells[#cells + 1] = { kind = "empty" } end
 	return cells, stats
 end
 ns.Scan = Scan
