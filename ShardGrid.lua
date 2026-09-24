@@ -748,7 +748,6 @@ function ANIM.GetFlyer()
 	tex:SetTexture(SHARD_ICON)
 	tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 	tex:Hide()
-	ANIM.SoftenEdges(tex)
 	ANIM.pool[#ANIM.pool + 1] = tex
 	return tex
 end
@@ -807,56 +806,6 @@ function ANIM.Burst(x, y, size)
 		tex = tex, size = size, t = 0, dur = ANIM.BURST, burst = true,
 		spin = (math.random() < 0.5 and -1 or 1) * math.pi * 0.6,
 	})
-end
-
--- The portrait mask is a circle that fades out towards its edge, which is exactly the
--- shape wanted: the icon keeps its middle and loses its corners.
-ANIM.MASK_SCALE = 1.75 -- how much wider the mask is than the icon it softens
-
-function ANIM.MaskArt()
-	if ANIM.maskArt == nil then
-		ANIM.maskArt = false
-		local probe = ANIM.layer and ANIM.layer.CreateMaskTexture and ANIM.layer:CreateMaskTexture()
-		if probe then
-			-- Soft glows first: their alpha fades outwards, which is the gradient wanted.
-			-- The disc masks after them only cut a hard edge, which is better than nothing.
-			for _, path in ipairs({
-				"Interface\\GLUES\\MODELS\\UI_Draenei\\GenericGlow64",
-				"Interface\\SpellActivationOverlay\\IconAlert",
-				"Interface\\CharacterFrame\\TempPortraitAlphaMask",
-				"Interface\\Masks\\CircleMaskScalable",
-			}) do
-				probe:SetTexture(path, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-				if probe:GetTexture() then ANIM.maskArt = path break end
-			end
-			probe:Hide()
-		end
-		report["flight mask"] = ANIM.maskArt or "none on this client (square corners)"
-	end
-	return ANIM.maskArt
-end
-
--- Resize a flying icon, keeping its mask in step and a little wider than it.
-function ANIM.SizeFlyer(tex, size)
-	tex:SetSize(size, size)
-	local mask = rawget(tex, "sgMask")
-	if type(mask) == "table" then
-		local m = size * ANIM.MASK_SCALE
-		mask:SetSize(m, m)
-	end
-end
-
--- Give one flying texture its own mask, following it as it moves and grows.
-function ANIM.SoftenEdges(tex)
-	local art = ANIM.MaskArt()
-	if not art or not ANIM.layer.CreateMaskTexture then return end
-	local ok, mask = pcall(ANIM.layer.CreateMaskTexture, ANIM.layer)
-	if not ok or not mask then return end
-	mask:SetTexture(art, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-	mask:SetPoint("CENTER", tex, "CENTER")
-	mask:SetSize(1, 1) -- sized with the icon, see ANIM.SizeFlyer
-	pcall(tex.AddMaskTexture, tex, mask)
-	tex.sgMask = mask
 end
 
 -- Something soft and round for the trail: a glow if the client has one, the same star as
@@ -948,7 +897,7 @@ function ANIM.StepAnimations(_, elapsed)
 			a.tex:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
 			-- Visible the moment it leaves the burst, most of the growth happening early.
 			local size = a.size * (0.4 + 0.6 * t ^ 0.5)
-			ANIM.SizeFlyer(a.tex, size)
+			a.tex:SetSize(size, size)
 			a.tex:SetAlpha(math.min(1, pos * 8))
 			local turned = a.spin and (a.spin * (1 - inv * inv))
 			if turned and a.tex.SetRotation then
@@ -957,7 +906,7 @@ function ANIM.StepAnimations(_, elapsed)
 			end
 			if a.tinted then
 				-- Ordinary at first, its colour coming on through the second half.
-				ANIM.SizeFlyer(a.tinted, size)
+				a.tinted:SetSize(size, size)
 				a.tinted:ClearAllPoints()
 				a.tinted:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
 				if turned and a.tinted.SetRotation then a.tinted:SetRotation(turned) end
@@ -982,7 +931,7 @@ function ANIM.StepAnimations(_, elapsed)
 			if a.tex.SetRotation then a.tex:SetRotation(a.spin * pos) end
 		else
 			local size = a.size * (1 + 0.7 * pos)
-			ANIM.SizeFlyer(a.tex, size)
+			a.tex:SetSize(size, size)
 			a.tex:SetAlpha(1 - pos * pos)
 		end
 		if pos >= 1 then
@@ -1080,7 +1029,7 @@ function ANIM.FlashOut(cell, size, tint)
 	tex:SetDesaturated(tint and true or false)
 	tex:SetBlendMode("ADD")
 	if tex.SetRotation then tex:SetRotation(0) end
-	ANIM.SizeFlyer(tex, size * (rel or 1))
+	tex:SetSize(size * (rel or 1), size * (rel or 1))
 	tex:SetAlpha(1)
 	tex:ClearAllPoints()
 	tex:SetPoint("CENTER", cell, "CENTER")
