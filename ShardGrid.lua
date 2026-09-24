@@ -2361,7 +2361,7 @@ stoneWin.sgTitle:SetText("Soulstones")
 
 stoneWin.reportBtn = CreateFrame("Button", nil, stoneWin)
 stoneWin.reportBtn:SetSize(TITLE_BUTTON - 2, TITLE_BUTTON - 2)
-stoneWin.reportBtn:SetPoint("TOPLEFT", INSET.left - 1, -4)
+stoneWin.reportBtn:SetPoint("TOPLEFT", INSET.left - 1, -2)
 stoneWin.reportBtn:SetScript("OnClick", function() ns.ReportStones() end)
 
 do
