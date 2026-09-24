@@ -29,7 +29,7 @@
 - The name of whoever holds the soulstone sits on the bar with the timer, and who cast it sits above it on the right.
 - Soulstones are sorted with the most time remaining first.
 - New option: tell your party or raid when you soulstone someone. Only stones you cast are announced.
-- A Report button on the soulstone window posts the current assignments to raid or party chat: who is carrying one, who cast it and how long is left. Also at `/shards stones report`.
+- A report button on the soulstone window, a speech bubble at its top left, posts the current assignments to raid or party chat: who is carrying one, who cast it and how long is left. Also at `/shards stones report`.
 
 **Healthstones**
 - Optional: when a trade window opens and you have a Healthstone, it is placed into the trade for you. By default only for players in your group. You still confirm the trade.

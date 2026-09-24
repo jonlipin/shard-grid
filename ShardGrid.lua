@@ -2359,15 +2359,34 @@ stoneWin:SetWidth(STONE.W)
 stoneWin:Hide()
 stoneWin.sgTitle:SetText("Soulstones")
 
-stoneWin.reportBtn = CreateFrame("Button", nil, stoneWin, "UIPanelButtonTemplate")
-stoneWin.reportBtn:SetSize(58, TITLE_BUTTON - 4)
-if stoneWin.sgClose then
-	stoneWin.reportBtn:SetPoint("RIGHT", stoneWin.sgClose, "LEFT", -2, 0)
-else
-	stoneWin.reportBtn:SetPoint("TOPRIGHT", -28, -5)
-end
-stoneWin.reportBtn:SetText("Report")
+stoneWin.reportBtn = CreateFrame("Button", nil, stoneWin)
+stoneWin.reportBtn:SetSize(TITLE_BUTTON - 2, TITLE_BUTTON - 2)
+stoneWin.reportBtn:SetPoint("TOPLEFT", 5, -3)
 stoneWin.reportBtn:SetScript("OnClick", function() ns.ReportStones() end)
+
+do
+	-- A speech bubble: saying the list out loud to the group. Atlases can be tested for, so
+	-- they come first, then the interface's own gossip bubble, then a scroll.
+	local icon = stoneWin.reportBtn:CreateTexture(nil, "ARTWORK")
+	icon:SetAllPoints()
+	local used
+	for _, atlas in ipairs({ "communities-icon-chat", "UI-HUD-MicroMenu-Communities-Up", "chatframe-button-icon-speech" }) do
+		if HasAtlas(atlas) then icon:SetAtlas(atlas) used = "atlas " .. atlas break end
+	end
+	if not used then
+		for _, path in ipairs({
+			"Interface\\GossipFrame\\GossipGossipIcon",
+			"Interface\\ChatFrame\\UI-ChatIcon-Chat-Up",
+			"Interface\\Icons\\INV_Scroll_03",
+		}) do
+			icon:SetTexture(path)
+			if icon:GetTexture() then used = path break end
+		end
+	end
+	report["report icon"] = used or "none of the speech art is on this client"
+	stoneWin.reportBtn:SetScript("OnMouseDown", function() icon:SetAlpha(0.6) end)
+	stoneWin.reportBtn:SetScript("OnMouseUp", function() icon:SetAlpha(1) end)
+end
 stoneWin.reportBtn:SetScript("OnEnter", function(self)
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 	GameTooltip:SetText("Report soulstones", 1, 1, 1)

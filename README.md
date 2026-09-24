@@ -32,7 +32,7 @@ Turn on the floating summon button if you would rather work from the unit frames
 
 Both messages are yours to edit, with placeholders for the player's name, your zone, subzone, minimap zone text, coordinates and shards left. Each has a Test button, so you can check the wording before a stranger reads it.
 
-**Soulstones.** The tracker opens itself when a stone is cast and lists who is carrying one, longest remaining first. Its Report button reads the whole list out to raid or party chat, names, casters and time left, which is the quickest way to answer "who has stones?". Turn on the announcement if you want the group told as you stone each person. Only your own casts are announced, so several Warlocks will not repeat each other.
+**Soulstones.** The tracker opens itself when a stone is cast and lists who is carrying one, longest remaining first. The speech bubble at its top left reads the whole list out to raid or party chat, names, casters and time left, which is the quickest way to answer "who has stones?". Turn on the announcement if you want the group told as you stone each person. Only your own casts are announced, so several Warlocks will not repeat each other.
 
 **Healthstones.** With the trade options on, opening a trade puts a Healthstone straight into it, and offers a button to conjure one if you have none. You still press Trade yourself.
 
