@@ -38,7 +38,7 @@
 - "Show empty slots" fills the grid out with empty bag slots so it keeps the shape of a bag, with a "Minimum rows" setting so the window stops changing size.
 - "Empty slots first" reverses the order, so free slots sit at the top.
 - Shards outside your soul bag are orange, and those past the number you asked to keep are red, so the ones about to be deleted stand apart from the ones merely taking up bag space. They are moved next to the empty slots, and they are tinted even with no soul bag equipped, where nothing was tinted before.
-- A shard flying into the grid arrives its own colour and takes on the orange or red during the second half of its flight, so you watch it go wrong rather than simply appear wrong.
+- A shard flying into the grid arrives its own color and takes on the orange or red during the second half of its flight, so you watch it go wrong rather than simply appear wrong.
 - The count in the title bar is centered.
 - Shards are tossed into the grid when you gain one: a purple star of light bursts somewhere in the middle of the screen, in a different spot each time, and the shard is thrown out of it at a readable size, trailing purple light as it flies, lobbing up and back down into its slot over about a second under gravity, rising quickly, slowing to a stop at the top and gathering pace as it falls, each throw arcing a little higher or lower and running a little faster or slower than the last, growing as it goes and tumbling in the direction it travels. A spent shard bursts with the same purple star and flashes out of its slot. A small click sounds as each one settles, with several landing together sharing one. All of it can be turned off, with the "Animate shards" option, its own sound option, or `/shards anim`.
 

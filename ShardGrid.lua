@@ -905,7 +905,7 @@ function ANIM.StepAnimations(_, elapsed)
 				a.tex:SetRotation(turned)
 			end
 			if a.tinted then
-				-- Ordinary at first, its colour coming on through the second half.
+				-- Ordinary at first, its color coming on through the second half.
 				a.tinted:SetSize(size, size)
 				a.tinted:ClearAllPoints()
 				a.tinted:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
@@ -974,7 +974,7 @@ function ANIM.TossIn(cell, size, tint)
 	tex:SetAlpha(0)
 	tex:Show()
 
-	-- The colour it will end up, laid over the top and faded in during the flight.
+	-- The color it will end up, laid over the top and faded in during the flight.
 	local tinted
 	if tint then
 		tinted = ANIM.GetFlyer()
@@ -992,7 +992,7 @@ function ANIM.TossIn(cell, size, tint)
 	-- Thrown from somewhere in a patch of screen around the middle, a third of the way up, so
 	-- every shard comes from its own spot rather than all from one point. A random angle with
 	-- the square root of a random radius spreads them evenly over the patch instead of
-	-- bunching them in the centre.
+	-- bunching them in the center.
 	local angle = math.random() * 2 * math.pi
 	local reach = math.sqrt(math.random())
 	local x0 = w * 0.5 + math.cos(angle) * reach * w * 0.09
@@ -2795,7 +2795,7 @@ local syncers = {}
 
 -- Every control is positioned through Place(), which remembers where it was put. When a text
 -- box is dragged taller, Relayout() shifts everything below it in that column by the extra
--- height, instead of the box growing over its neighbours.
+-- height, instead of the box growing over its neighbors.
 local placed = {}   -- column -> ordered list of { obj, points = { {point, x, y} } }
 local boxes = {}    -- column -> list of { frame, y, base }
 
