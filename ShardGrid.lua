@@ -1934,7 +1934,31 @@ function ns.AddTestSummonRequest()
 	UpdateSummonWindow()
 end
 
--- Arrivals: anyone in the list who is now within range has been summoned (or walked).
+-- Arrivals. Asking whether someone is in range is the obvious test, but this client is
+-- entitled to hand back a value an addon may not read, and when it does that nothing would
+-- ever clear. So a name that has actually been summoned also clears once the player turns up
+-- nearby, and in any case once the portal they were offered has run out.
+local SUMMON_OFFER = 150 -- the offer stands for two minutes; a little slack on top
+
+-- Why this name should come off the list, or nil to leave it.
+local function Arrived(r, unit)
+	local ok, inRange, checked = pcall(UnitInRange, unit)
+	if ok and not IsSecret(inRange) then
+		report["range check"] = "readable"
+		if checked and inRange then return "here" end
+	elseif ok then
+		report["range check"] = "hidden by the client, falling back on sight and the clock"
+	end
+
+	-- Only once we have actually summoned them: before that, someone standing next to you is
+	-- still waiting for a summon and belongs on the list.
+	if not r.lastSent then return end
+
+	local seen, visible = pcall(UnitIsVisible, unit)
+	if seen and not IsSecret(visible) and visible then return "here" end
+	if GetTime() - r.lastSent > SUMMON_OFFER then return "offer expired" end
+end
+
 local function CheckSummonArrivals()
 	if not db or #requests == 0 then return end
 	local changed = false
@@ -1942,8 +1966,7 @@ local function CheckSummonArrivals()
 		local r = requests[i]
 		local unit = FindGroupUnit(r.short)
 		if unit then
-			local ok, inRange, checked = pcall(UnitInRange, unit)
-			if ok and not IsSecret(inRange) and checked and inRange then
+			if not r.test and Arrived(r, unit) then
 				table.remove(requests, i)
 				changed = true
 			end
@@ -1960,6 +1983,7 @@ local function CheckSummonArrivals()
 		end
 	end
 end
+ns.CheckSummonArrivals = CheckSummonArrivals -- the offline tests drive this directly
 if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(2, CheckSummonArrivals) end
 
 -- ---- Healthstone on trade ------------------------------------------------------
