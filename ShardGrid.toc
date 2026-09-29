@@ -6,5 +6,6 @@
 ## LoadSavedVariablesFirst: 1
 ## SavedVariablesPerCharacter: ShardGridDB
 ## IconTexture: Interface\Icons\INV_Misc_Gem_Amethyst_02
+## X-License: MIT
 
 ShardGrid.lua
