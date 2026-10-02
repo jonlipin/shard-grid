@@ -1,0 +1,100 @@
+name: Post release to Discord
+
+# Runs when a tag is pushed. Posts the addon name, version and the contents of
+# RELEASE-NOTES.md to the #dev-updates webhook.
+#
+# Needs one repository secret: DISCORD_WEBHOOK_URL (the webhook URL copied from
+# Discord, with or without /github on the end).
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Post release notes
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.event.repository.name }}
+          # Role pinged with each post (@Updates). Set to '' for no ping.
+          PING_ROLE_ID: '1553080661835915364'
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "::error::The DISCORD_WEBHOOK_URL secret is not set on this repository."
+            exit 1
+          fi
+          # Accept the URL with or without the /github suffix GitHub's own hook uses.
+          hook="${DISCORD_WEBHOOK_URL%%\?*}"
+          hook="${hook%/}"
+          hook="${hook%/github}"
+
+          # Addon name from the .toc, falling back to the repo name.
+          name=""
+          toc=$(ls ./*.toc 2>/dev/null | head -n 1 || true)
+          if [ -n "$toc" ]; then
+            name=$(grep -m 1 -i '^## *Title:' "$toc" \
+              | sed -E 's/^## *Title: *//; s/\|c[0-9a-fA-F]{8}//g; s/\|r//g' \
+              | tr -d '\r' || true)
+          fi
+          [ -n "$name" ] || name="$REPO"
+
+          # CurseForge page. The slug is the repo name unless listed here.
+          case "$REPO" in
+            forager) slug="forager-auto-tracking-switcher-for-find-herbs-find" ;;
+            *)       slug="$REPO" ;;
+          esac
+          url="https://www.curseforge.com/wow/addons/$slug"
+
+          # Release notes: drop the version heading on line 1 and join
+          # hard-wrapped lines, because Discord keeps every line break.
+          notes=""
+          if [ -f RELEASE-NOTES.md ]; then
+            notes=$(tr -d '\r' < RELEASE-NOTES.md | awk '
+              function flush() { if (buf != "") { print buf; buf = "" } }
+              NR == 1 && /^#/ { next }
+              /^```/ { flush(); code = !code; print; seen = 1; blank = 0; next }
+              code { print; next }
+              /^[[:space:]]*$/ { flush(); if (seen && !blank) print ""; blank = 1; next }
+              /^[[:space:]]*([-*+] |#|>|[0-9]+[.)] )/ { flush(); buf = $0; seen = 1; blank = 0; next }
+              { line = $0; sub(/^[[:space:]]+/, "", line)
+                buf = (buf == "" ? line : buf " " line); seen = 1; blank = 0 }
+              END { flush() }
+            ')
+          fi
+          [ -n "$notes" ] || notes="See the changelog on CurseForge."
+
+          # Discord allows 4096 characters in an embed description.
+          jq -n \
+            --arg title "$name $TAG" \
+            --arg url "$url" \
+            --arg notes "$notes" \
+            --arg role "${PING_ROLE_ID:-}" \
+            '{
+              content: (if $role == "" then null else "<@&\($role)>" end),
+              allowed_mentions: { roles: (if $role == "" then [] else [$role] end) },
+              embeds: [{
+                title: $title,
+                url: $url,
+                color: 15819830,
+                description: (if ($notes | length) > 3900
+                  then ($notes[0:3900] | sub("\n[^\n]*$"; "")) + "\n\n[Full changelog](\($url)/files)"
+                  else $notes end)
+              }]
+            } | with_entries(select(.value != null))' > payload.json
+
+          curl --fail-with-body -sS \
+            -H 'Content-Type: application/json' \
+            -d @payload.json \
+            "$hook?wait=true" > /dev/null
+          echo "Posted $name $TAG to Discord."
