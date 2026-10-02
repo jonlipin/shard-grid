@@ -1,4 +1,5 @@
-## 1.4.1 - 2026-09-27
+## 1.4.2 - 2026-10-01
 
 ### Fixes
-- Fixed a name staying in the summon list after the player took the summon. The list cleared a name by asking whether that player was in range, and this client is entitled to withhold that answer from an addon, in which case nothing ever cleared. A summoned name now also clears once the player turns up nearby, and in any case once the two minute offer has run out. Names you have not summoned yet are left alone, so somebody standing next to you still keeps their place in the queue.
+- Fixed soulstones vanishing from the tracker in combat and coming back afterwards. This client withholds aura readings from addons while you are fighting, and the tracker took being refused a reading as the stone being gone. A soulstone expires at a fixed moment, so the tracker now keeps the last reading it got and counts it down on its own, through combat and anything else that closes the auras to it. A stone genuinely removed is still forgotten, as soon as the auras can be read again.
+- A stone no longer looks newly cast when combat ends, so the announcement does not repeat itself.

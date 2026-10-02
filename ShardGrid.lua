@@ -2322,6 +2322,8 @@ local STONE = {
 
 local stones = {}        -- ordered list of { name, short, class, caster, expires, duration }
 
+-- Returns duration, expires, source, icon for a stone we could read; nothing at all when the
+-- unit plainly has no stone; or nil plus "withheld" when the client would not let us read.
 local function StoneAura(unit)
 	for i = 1, 40 do
 		local name, icon, _, _, duration, expires, source, spellId
@@ -2335,7 +2337,9 @@ local function StoneAura(unit)
 		else
 			return
 		end
-		if type(name) ~= "string" then return end
+		-- A name we are not allowed to read means the rest of the list is closed to us too,
+		-- so this is "unknown", not "no stone".
+		if type(name) ~= "string" then return nil, nil, nil, nil, true end
 		local match = name == STONE.NAME
 		if not match and spellId then
 			for _, id in ipairs(STONE.IDS) do
@@ -2343,13 +2347,23 @@ local function StoneAura(unit)
 			end
 		end
 		if match then
+			if IsSecret(duration) or IsSecret(expires) or type(duration) ~= "number" then
+				return nil, nil, nil, nil, true
+			end
 			return duration, expires, source, icon
 		end
 	end
 end
 
+-- The last good reading for each player. A soulstone's expiry is a fixed moment, so once we
+-- have it the bar can keep counting down on its own, through combat and anything else that
+-- closes the auras to us.
+local stoneMemory = {}
+
 local function ScanStones()
 	local found, order = {}, {}
+	local now = GetTime()
+	local withheld = false
 	local units = { "player" }
 	if IsInRaid and IsInRaid() then
 		for i = 1, 40 do units[#units + 1] = "raid" .. i end
@@ -2357,22 +2371,39 @@ local function ScanStones()
 		for i = 1, 4 do units[#units + 1] = "party" .. i end
 	end
 	for _, unit in ipairs(units) do
-		if UnitExists(unit) then
-			local ok, duration, expires, source, icon = pcall(StoneAura, unit)
-			if ok and duration and not IsSecret(duration) then
-				local name = ManualName(unit) or UnitName(unit)
-				if name and not found[name] then
-					local caster = source and UnitName(source)
-					found[name] = true
-					order[#order + 1] = {
-						name = name, short = ShortName(name),
-						class = select(2, UnitClass(unit)),
-						caster = caster, duration = duration, expires = expires, icon = icon,
-					}
-				end
+		local name = UnitExists(unit) and (ManualName(unit) or UnitName(unit))
+		if name and not found[name] then
+			local ok, duration, expires, source, icon, unknown = pcall(StoneAura, unit)
+			local record
+			if ok and duration then
+				local caster = source and UnitName(source)
+				if IsSecret(caster) then caster = nil end
+				record = {
+					name = name, short = ShortName(name),
+					class = select(2, UnitClass(unit)),
+					caster = caster, duration = duration, expires = expires, icon = icon,
+				}
+				stoneMemory[name] = record
+			elseif (not ok) or unknown then
+				-- Nothing readable: go on showing what we last knew, until it runs out.
+				withheld = true
+				local remembered = stoneMemory[name]
+				if remembered and (remembered.expires or 0) > now then record = remembered end
+			else
+				stoneMemory[name] = nil -- read it cleanly, and there is no stone
+			end
+			if record then
+				found[name] = true
+				order[#order + 1] = record
 			end
 		end
 	end
+
+	for who, record in pairs(stoneMemory) do
+		if (record.expires or 0) <= now then stoneMemory[who] = nil end
+	end
+	report["aura reads"] = withheld and "withheld, counting down from memory" or "readable"
+
 	table.sort(order, function(a, b) return (a.expires or 0) > (b.expires or 0) end)
 	return order
 end
