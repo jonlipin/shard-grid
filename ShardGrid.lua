@@ -2226,8 +2226,12 @@ local function ManualUnitCheck() end
 
 -- The unit the click will act on: whatever you are hovering, else your target.
 local function ManualUnit()
-	if UnitExists("mouseover") and UnitIsPlayer("mouseover") and UnitIsFriend("player", "mouseover") then return "mouseover" end
-	if UnitExists("target") and UnitIsPlayer("target") and UnitIsFriend("player", "target") then return "target" end
+	for _, unit in ipairs({ "mouseover", "target" }) do
+		if UnitExists(unit) and not (UnitIsUnit and UnitIsUnit(unit, "player")) then
+			local grouped = (UnitInParty and UnitInParty(unit)) or (UnitInRaid and UnitInRaid(unit))
+			if grouped then return unit end
+		end
+	end
 end
 
 local function ManualName(unit)
@@ -2277,13 +2281,13 @@ function ns.UpdateSummonButton()
 	if InCombatLockdown() then return end -- secure attributes are locked in combat
 	local spell = SummonSpellName()
 	msBtn:SetAttribute("type", "macro")
-	local waiting
+	local waiting, waitingUnit
 	for _, req in ipairs(requests) do
-		if not req.test and req.unit then waiting = req.short break end
+		if not req.test and req.unit then waiting, waitingUnit = req.short, req.unit break end
 	end
 	msBtn.waitingFor = waiting
-	local clauses = "[@mouseover,help,exists,nodead][@target,help,exists,nodead]"
-	if waiting then clauses = clauses .. "[@" .. waiting .. ",help,exists,nodead]" end
+	local clauses = "[@mouseover,exists,noharm,nodead][@target,exists,noharm,nodead]"
+	if waitingUnit then clauses = clauses .. "[@" .. waitingUnit .. ",exists,nodead]" end
 	msBtn:SetAttribute("macrotext", "/cast " .. clauses .. " " .. spell)
 	local icon = (C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(SUMMON_SPELL_ID))
 		or (GetSpellTexture and GetSpellTexture(SUMMON_SPELL_ID))

@@ -1,5 +1,6 @@
-## 1.4.2 - 2026-10-01
+## 1.4.3 - 2026-10-06
 
 ### Fixes
-- Fixed soulstones vanishing from the tracker in combat and coming back afterwards. This client withholds aura readings from addons while you are fighting, and the tracker took being refused a reading as the stone being gone. A soulstone expires at a fixed moment, so the tracker now keeps the last reading it got and counts it down on its own, through combat and anything else that closes the auras to it. A stone genuinely removed is still forgotten, as soon as the auras can be read again.
-- A stone no longer looks newly cast when combat ends, so the announcement does not repeat itself.
+- Fixed the summon button doing nothing when the player you targeted was in another zone. Before casting, the button asked the game whether you could assist that player, and the game cannot answer that for a party member it has not loaded, which is anyone outside your zone. The button now only checks that the player is not an enemy, which holds wherever they are.
+- Fixed the summon button saying there was nobody to summon while a party member in another zone was targeted. It now goes by whether they are in your group, which the game knows wherever they are.
+- With nobody targeted, the button finds the longest waiting player by their place in your group rather than by name, so it is not thrown by names with a surname.
