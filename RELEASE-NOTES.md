@@ -1,6 +1,6 @@
-## 1.4.3 - 2026-10-06
+## 1.4.4 - 2026-10-08
 
 ### Fixes
-- Fixed the summon button doing nothing when the player you targeted was in another zone. Before casting, the button asked the game whether you could assist that player, and the game cannot answer that for a party member it has not loaded, which is anyone outside your zone. The button now only checks that the player is not an enemy, which holds wherever they are.
-- Fixed the summon button saying there was nobody to summon while a party member in another zone was targeted. It now goes by whether they are in your group, which the game knows wherever they are.
-- With nobody targeted, the button finds the longest waiting player by their place in your group rather than by name, so it is not thrown by names with a surname.
+- Fixed the Create Healthstone button on the trade window doing nothing when clicked. The button only listened for the mouse button coming back up, and with the game's default "cast on key down" setting the cast happens on the press, so the click never reached it. It now listens for both, like the summon button.
+- The button now casts Create Healthstone by its spell ID rather than its name, so ranked names such as "Create Healthstone (Minor)" cannot be misread.
+- `/shards debug` now shows which Create Healthstone spell the button uses.

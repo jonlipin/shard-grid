@@ -2042,14 +2042,14 @@ local function CreateHealthstoneName()
 		if known then
 			local name = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id))
 				or (GetSpellInfo and GetSpellInfo(id))
-			if type(name) == "string" and name ~= "" then return name end
+			if type(name) == "string" and name ~= "" then return name, id end
 		end
 	end
 end
 
 local function EnsureMakeButton()
 	if makeButton or InCombatLockdown() or not TradeFrame then return end
-	local spell = CreateHealthstoneName()
+	local spell, spellID = CreateHealthstoneName()
 	if not spell then return end
 	local made
 	for _, tmpl in ipairs({ "SecureActionButtonTemplate,UIPanelButtonTemplate", "SecureActionButtonTemplate" }) do
@@ -2059,8 +2059,11 @@ local function EnsureMakeButton()
 	if not made then return end
 	made:SetSize(150, 22)
 	made:SetPoint("BOTTOMLEFT", TradeFrame, "BOTTOMLEFT", 20, 14)
+	made:SetFrameLevel(TradeFrame:GetFrameLevel() + 10)
+	made:RegisterForClicks("AnyUp", "AnyDown")
 	made:SetAttribute("type", "spell")
-	made:SetAttribute("spell", spell)
+	made:SetAttribute("spell", spellID)
+	report["healthstone spell"] = spell .. " (" .. spellID .. ")"
 	if made.SetText then made:SetText(spell) end
 	made:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
