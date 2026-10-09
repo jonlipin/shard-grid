@@ -10,7 +10,7 @@ Then it handles what the shards are actually for.
 - **Soulstones.** Who is carrying one, who cast it and how long is left, on bars built from the game's own cooldown art. One button reports the lot to your raid.
 - **Healthstones.** Passed over the moment a trade window opens, or conjured on the spot when you have none to give.
 
-It is drawn with the interface's own art and its options live in the game's own settings panel, so it looks like part of the UI rather than something bolted onto it. No dependencies, no libraries, one file.
+It is drawn with the interface's own art and its options live in the game's own settings panel, so it looks like part of the UI rather than something bolted onto it. If you use EllesmereUI, it takes on that look instead. No dependencies, no libraries.
 
 ## Getting started
 
@@ -65,6 +65,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 ## Notes
 
 - Settings are saved per character.
+- With EllesmereUI installed, Shard Grid uses its look. Switch that off in EllesmereUI under Blizzard Skins+ > Window Skins > Third-Party Addons.
 - Made for Warlocks. On other classes the grid stays hidden unless you are carrying Soul Shards.
 - Some of what this addon does, destroying an item or casting a spell, is only allowed by the game during a real key press or click, and the summon list is locked while you are in combat. Where that matters it is explained in the options rather than failing quietly.
 - Found a bug? Include the output of `/shards debug` with your report.

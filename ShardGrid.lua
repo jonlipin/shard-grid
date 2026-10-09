@@ -8,6 +8,7 @@
 local ADDON, ns = ...
 
 local report = {}
+ns.report = report
 
 local SHARD_ID = 6265
 local SHARD_ICON = "Interface\\Icons\\INV_Misc_Gem_Amethyst_02"
@@ -491,6 +492,7 @@ frame:Hide()
 local emptyText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 emptyText:SetPoint("TOPLEFT", INSET.left, -INSET.top - 4)
 emptyText:SetText("No shards")
+ns.gridEmpty = emptyText
 
 local fit = 1 -- extra shrink applied on top of db.scale, see MIN_W
 
@@ -658,6 +660,7 @@ ns.SetStage("grid cells")
 -- Cells
 -- ------------------------------------------------------------------
 local cells = {}
+ns.cells = cells
 local slotAtlas -- resolved once
 
 local function StyleSlotBackground(tex)
@@ -699,6 +702,7 @@ local function GetCell(i)
 	cell.count:SetPoint("BOTTOMRIGHT", -1, 2)
 
 	cells[i] = cell
+	if ns.SkinCell then ns.SkinCell(cell) end
 	return cell
 end
 
@@ -1321,6 +1325,7 @@ frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- Width grip: drag the bottom-right corner, columns snap to the cursor.
 -- ------------------------------------------------------------------
 local grip = CreateFrame("Button", nil, frame)
+ns.grip = grip
 grip:SetSize(14, 14)
 grip:SetPoint("BOTTOMRIGHT", -3, 3)
 frame.sgGrip = grip
@@ -1567,6 +1572,7 @@ sumClear:SetText("Clear all")
 local sumEmpty = sumContent:CreateFontString(nil, "OVERLAY", "GameFontDisable")
 sumEmpty:SetPoint("TOP", 0, -10)
 sumEmpty:SetText("No summon requests")
+ns.sumMini, ns.sumMinBtn, ns.sumClear, ns.sumFooter, ns.sumEmpty = sumMini, sumMinBtn, sumClear, sumFooter, sumEmpty
 
 -- Combat banner: the rows are secure buttons and can't be disabled in combat, so an ordinary
 -- frame is laid over them instead. It swallows the clicks and explains why.
@@ -1774,6 +1780,7 @@ local function GetSummonRow(i)
 	end)
 	row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	summonRows[i] = row
+	if ns.SkinSummonRow then ns.SkinSummonRow(row) end
 	return row
 end
 
@@ -1807,6 +1814,8 @@ local function ApplyMinimized()
 	end
 	sumMini:SetShown(min)
 	sumMinBtn:SetText(min and "+" or "-")
+	ns.summonMinimized = min
+	if ns.SkinMinimized then ns.SkinMinimized(min) end
 end
 
 function UpdateSummonWindow()
@@ -2076,6 +2085,7 @@ local function EnsureMakeButton()
 	made:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	made:Hide()
 	makeButton = made
+	if ns.SkinMakeButton then ns.SkinMakeButton(made) end
 end
 
 -- Shown only while a trade is open and you have nothing to give, so it disappears by itself
@@ -2490,6 +2500,7 @@ end
 
 ns.SetStage("soulstone rows")
 local stoneRows = {}
+ns.stoneRows = stoneRows
 
 local ApplyRowArt -- defined below, used when a row is built
 
@@ -2611,6 +2622,7 @@ function ApplyRowArt(row)
 	end
 
 	ApplyBorder(row.fill)
+	if ns.SkinStoneRow then ns.SkinStoneRow(row) end
 end
 
 function ns.ApplyBarArt()
@@ -3737,6 +3749,7 @@ end
 ns.SetStage("cog button")
 -- Cog in the title bar + right-click on the grid.
 local cog = CreateFrame("Button", nil, frame)
+ns.cog = cog
 cog:SetSize(16, 16)
 cog:SetPoint("TOPRIGHT", -5, -3)
 frame.sgCog = cog
