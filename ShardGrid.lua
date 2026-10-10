@@ -73,6 +73,8 @@ local DEFAULTS = {
 	tradeCreate = true,   -- offer a Create Healthstone button on the trade window
 	minimapShown = true,
 	minimapAngle = 215, -- degrees around the minimap
+	style = "auto",     -- window style: "auto" (EllesmereUI when it is running), "blizzard" or "dark"
+	darkAlpha = 0.92,   -- background opacity of the Dark style
 }
 
 -- Alert sounds: looked up by SOUNDKIT name first, numeric id as fallback. Picked in the config.
@@ -88,6 +90,7 @@ local SOUND_CHOICES = {
 }
 
 local db
+function ns.DB() return db end
 local lastStats
 local Refresh -- forward
 
@@ -480,6 +483,14 @@ local function CreatePanel(name, wantClose)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
 	return f
+end
+
+-- The game's close X calls HideUIPanel, which the game refuses for an addon in combat, so the X
+-- would do nothing then. These windows are not UI panels: their X just hides them, in combat too.
+-- Not for the summon window: its rows are secure buttons, so hiding it in combat is blocked anyway.
+function ns.CloseByHiding(panel, button)
+	if type(button) ~= "table" or not button.SetScript then return end
+	button:SetScript("OnClick", function() panel:Hide() end)
 end
 
 -- ------------------------------------------------------------------
@@ -1520,6 +1531,14 @@ sumWin:SetFrameStrata("MEDIUM")
 sumWin:SetWidth(SUMMON_W)
 sumWin:Hide()
 sumWin.sgTitle:SetText("Summons")
+-- The summon rows are secure buttons, so the game won't let this window hide in combat at
+-- all. The X says so, like the other summon controls, instead of "Interface action blocked".
+if type(sumWin.sgClose) == "table" then
+	sumWin.sgClose:SetScript("OnClick", function()
+		if InCombatLockdown() then Print("Can't close the summon window in combat.") return end
+		sumWin:Hide()
+	end)
+end
 
 local sumContent = CreateFrame("Frame", nil, sumWin)
 sumContent:SetPoint("TOPLEFT", INSET.left, -INSET.top)
@@ -2426,6 +2445,7 @@ local function ScanStones()
 end
 
 local stoneWin = CreatePanel("ShardGridStones", true)
+ns.CloseByHiding(stoneWin, stoneWin.sgClose)
 stoneWin:SetFrameStrata("MEDIUM")
 stoneWin:SetWidth(STONE.W)
 stoneWin:Hide()
@@ -3091,6 +3111,7 @@ local function AddSlider(parent, y, label, opts)
 		if handler then handler(sc, delta) end
 	end)
 	syncers[#syncers + 1] = Sync
+	sl.sgLabel, sl.sgValue = fs, value
 	return sl
 end
 
@@ -3253,6 +3274,7 @@ end
 
 local function BuildConfig()
 	config = CreatePanel("ShardGridConfig", true)
+	ns.CloseByHiding(config, config.sgClose)
 	config:SetSize(CONTENT_W, CONTENT_H + 34)
 	config:SetPoint("CENTER")
 	config:SetFrameStrata("DIALOG")
@@ -3384,6 +3406,61 @@ local function BuildConfig()
 	AddCheck(col, y, "Show minimap button",
 		function() return db.minimapShown end,
 		function(v) db.minimapShown = v ns.UpdateMinimapButton() end)
+
+	y = y - 36
+	AddHeader(col, y, "Look")
+	y = y - 24
+	local styleBtn = CreateFrame("Button", nil, col, "UIPanelButtonTemplate")
+	styleBtn:SetSize(200, 22)
+	Place(col, styleBtn, "TOPLEFT", 20, y)
+	local styleNote = col:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	local opacity -- the Dark opacity slider, made below
+	local function ShowStyle()
+		styleBtn:SetText("Window style: " .. (ns.StyleName and ns.StyleName(db.style) or "Blizzard"))
+		styleNote:SetText(ns.StyleNote and ns.StyleNote() or "")
+		if opacity then
+			local dark = db.style == "dark"
+			opacity:SetEnabled(dark)
+			opacity:SetAlpha(dark and 1 or 0.5)
+			opacity.sgLabel:SetFontObject(dark and GameFontHighlight or GameFontDisable)
+			opacity.sgValue:SetFontObject(dark and GameFontNormal or GameFontDisable)
+		end
+	end
+	syncers[#syncers + 1] = ShowStyle
+	styleBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	styleBtn:SetScript("OnClick", function(_, button)
+		if ns.CycleStyle then ns.CycleStyle(button == "RightButton" and -1 or 1) end
+		ShowStyle()
+	end)
+	styleBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Window style", 1, 1, 1)
+		for _, line in ipairs(ns.Styles and ns.Styles.HELP or {}) do GameTooltip:AddLine(line, nil, nil, nil, true) end
+		GameTooltip:AddLine("Left-click for the next style, right-click for the previous one.", 0.6, 0.6, 0.6, true)
+		GameTooltip:Show()
+	end)
+	styleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	y = y - 26
+	Place(col, styleNote, "TOPLEFT", 22, y)
+	Place(col, styleNote, "TOPRIGHT", -18, y)
+	styleNote:SetJustifyH("LEFT")
+	y = y - 26
+	opacity = AddSlider(col, y, "Dark background opacity", {
+		min = 0, max = 100, step = 5,
+		get = function() return math.floor(db.darkAlpha * 100 + 0.5) end,
+		set = function(v) db.darkAlpha = v / 100 if ns.SetDarkAlpha then ns.SetDarkAlpha(db.darkAlpha) end end,
+		format = function(v) return v .. "%" end,
+	})
+	opacity:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Dark background opacity", 1, 1, 1)
+		GameTooltip:AddLine("How much of the world shows through the Dark style's windows.", nil, nil, nil, true)
+		if db.style ~= "dark" then GameTooltip:AddLine("Applies to the Dark style only.", 1, 0.82, 0, true) end
+		GameTooltip:Show()
+	end)
+	opacity:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	y = y - 4
+	ShowStyle()
 
 	y = y - 36
 	AddHeader(col, y, "Overflow shards")
@@ -3586,7 +3663,7 @@ local function BuildConfig()
 		GameTooltip:Show()
 	end)
 	groupTest:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	y = y - (TEXTBOX_H + 8)
+	y = y - (TEXTBOX_H + 14)
 	AddCheck(col, y, "Whisper the player being summoned",
 		function() return db.summonWhisper end,
 		function(v) db.summonWhisper = v end,
@@ -3605,7 +3682,7 @@ local function BuildConfig()
 		GameTooltip:Show()
 	end)
 	whisperTest:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	y = y - (TEXTBOX_H + 8)
+	y = y - (TEXTBOX_H + 14)
 	AddCheck(col, y, "Play a sound on a new request",
 		function() return db.summonSound end,
 		function(v) db.summonSound = v end)
@@ -3616,7 +3693,7 @@ local function BuildConfig()
 	y = y - 18
 	AddTextBox(col, y, "summonKeywords", DEFAULT_KEYWORDS, "Request keywords",
 		"A message counts as a summon request when it contains one of these as a whole word or phrase. One or two character keywords (like \"1\") must be the entire message. Clear the box and click elsewhere to restore the defaults.")
-	y = y - (TEXTBOX_H + 8)
+	y = y - (TEXTBOX_H + 14)
 	local showSum = CreateFrame("Button", nil, col, "UIPanelButtonTemplate")
 	showSum:SetSize(150, 22)
 	Place(col, showSum, "TOPLEFT", 20, y)
@@ -3664,7 +3741,8 @@ local function BuildConfig()
 		end
 		ns.UpdateOptionsScroll()
 	end
-	ns.ResizeOptions()
+	Relayout(colL)
+	Relayout(colR) -- each ends with ns.ResizeOptions()
 end
 
 -- ------------------------------------------------------------------
@@ -3936,6 +4014,9 @@ local function PlaceMinimapButton()
 	if not mmButton then return end
 	local angle = math.rad(db.minimapAngle or 215)
 	local radius = (Minimap:GetWidth() or 140) / 2 + 6
+	-- Only while it sits on the minimap. A button collector (EllesmereUI's, for one) that
+	-- has taken the button keeps it where it put it.
+	if mmButton:GetParent() ~= Minimap then return end
 	mmButton:ClearAllPoints()
 	mmButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
 end
@@ -4240,6 +4321,13 @@ SlashCmdList["SHARDGRID"] = function(msg)
 		else db.animate = not db.animate end
 		if not db.animate then ANIM.StopAll() end
 		Print("Shard animations " .. (db.animate and "on." or "off."))
+		return
+	elseif cmd == "style" then
+		if arg == "auto" or arg == "automatic" then ns.SetStyle("auto")
+		elseif arg == "blizzard" or arg == "dark" then ns.SetStyle(arg)
+		elseif arg == "" or arg == nil then ns.CycleStyle(1)
+		else Print("Styles: auto, blizzard, dark.") return end
+		Print("Window style: " .. ns.StyleName(db.style) .. ". " .. ns.StyleNote())
 		return
 	elseif cmd == "minimap" then
 		db.minimapShown = not db.minimapShown

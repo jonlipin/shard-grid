@@ -10,7 +10,7 @@ Then it handles what the shards are actually for.
 - **Soulstones.** Who is carrying one, who cast it and how long is left, on bars built from the game's own cooldown art. One button reports the lot to your raid.
 - **Healthstones.** Passed over the moment a trade window opens, or conjured on the spot when you have none to give.
 
-It is drawn with the interface's own art and its options live in the game's own settings panel, so it looks like part of the UI rather than something bolted onto it. If you use EllesmereUI, it takes on that look instead. No dependencies, no libraries.
+It is drawn with the interface's own art and its options live in the game's own settings panel, so it looks like part of the UI rather than something bolted onto it. If you use EllesmereUI, it takes on that look instead, and a built-in Dark style is one click away in the options. No dependencies, no libraries.
 
 ## Getting started
 
@@ -36,6 +36,8 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 
 **Soulstones.** The tracker opens itself when a stone is cast and lists everyone carrying one, longest remaining first. The speech bubble at its top left reports the whole list to raid or party chat, names, casters and times, which is the quickest way to answer "who has stones?". Turn on the announcement if you would rather the group were told as you stone each person; only your own casts are announced, so several Warlocks will not repeat each other.
 
+**Choosing a look.** The Look section of the options has a Window style button: Automatic (EllesmereUI's look when it is installed, otherwise Blizzard), Blizzard, or Dark, a flat dark style that needs no other addon. With Dark chosen, a slider sets how much of the world shows through its windows. Switching away from a style takes a reload, and Shard Grid offers one.
+
 **Healthstones.** With the trade options on, opening a trade drops a Healthstone straight into it, and offers a button to conjure one when you have none. You still press Trade yourself.
 
 ## Commands
@@ -47,6 +49,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 | `/shards width N` | Grid width in columns |
 | `/shards size N` | Slot size |
 | `/shards scale N` | Overall scale (0.5 to 2) |
+| `/shards style` / `style auto` / `style blizzard` / `style dark` | Next window style, or pick one |
 | `/shards anim` | Turn the shard animations on or off |
 | `/shards alert N` / `alert on` / `alert off` | Low shard alert threshold, or switch it |
 | `/shards sound ID` | Use a custom sound kit ID for the alert |
@@ -65,7 +68,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 ## Notes
 
 - Settings are saved per character.
-- With EllesmereUI installed, Shard Grid uses its look. Switch that off in EllesmereUI under Blizzard Skins+ > Window Skins > Third-Party Addons.
+- With EllesmereUI installed and the window style on Automatic, Shard Grid uses its look. Pick Blizzard or Dark in the Look section instead, or switch it off in EllesmereUI under Blizzard Skins+ > Window Skins > Third-Party Addons.
 - Made for Warlocks. On other classes the grid stays hidden unless you are carrying Soul Shards.
 - Some of what this addon does, destroying an item or casting a spell, is only allowed by the game during a real key press or click, and the summon list is locked while you are in combat. Where that matters it is explained in the options rather than failing quietly.
 - Found a bug? Include the output of `/shards debug` with your report.
