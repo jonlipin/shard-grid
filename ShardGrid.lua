@@ -111,7 +111,11 @@ blockWatcher:SetScript("OnEvent", function(_, event, who, fn)
 	local what = (event == "ADDON_ACTION_FORBIDDEN") and "forbidden" or "blocked"
 	fn = tostring(fn or "?")
 	local key = what .. " " .. fn
-	if not ns.blockLog[key] then
+	if ns.hookTrying then
+		-- An action hook being tried: the refusal only tells us that input doesn't count as a
+		-- button press here. HardwareDeletePass switches that one input off; nothing to announce.
+		report["last hook refusal"] = fn .. " from " .. ns.hookTrying
+	elseif not ns.blockLog[key] then
 		ns.blockLog[key] = loadStage
 		ns.blockOrder[#ns.blockOrder + 1] = key
 		Print(("|cffff4040%s:|r %s |cff9d9d9d(during: %s)|r - please send me this line."):format(what, fn, loadStage))
@@ -254,8 +258,11 @@ local function SetAutoDelete(on)
 end
 
 -- How many shards are over the allowance (only ever counts shards outside the soul bag).
+-- Nothing counts while the soul bag still has room and shards sit in other bags: those are moved
+-- into the soul bag first (ns.FillSoulBag), and only what still doesn't fit is deleted.
 local function Excess(stats)
 	if db.onlyWithBag and not stats.hasSoulBag then return 0 end
+	if stats.free > 0 and stats.outside > 0 then return 0 end
 	local total = stats.inSoul + stats.outside
 	local excess = total - (stats.soulSlots + db.keepExtra)
 	return math.max(0, math.min(excess, stats.outside))
@@ -298,6 +305,49 @@ local function DeleteShards(excess)
 	return issued
 end
 
+-- Moves ONE loose shard stack (last bag slot first, the order deletion uses) into an empty slot
+-- of the soul bag. Returns true when a shard was moved. Kept on ns: the main chunk is near the
+-- client's 200-local limit.
+function ns.FillSoulBag()
+	if GetCursorInfo() then return false end -- never touch what the player is holding
+	local toBag, toSlot
+	for bag = 0, MAX_BAG do
+		local slots = GetNumSlots(bag) or 0
+		if slots > 0 and IsSoulBag(bag) then
+			for slot = 1, slots do
+				if not GetSlotItemID(bag, slot) then toBag, toSlot = bag, slot break end
+			end
+		end
+		if toBag then break end
+	end
+	if not toBag then return false end
+	for bag = MAX_BAG, 0, -1 do
+		local slots = GetNumSlots(bag) or 0
+		if slots > 0 and not IsSoulBag(bag) then
+			for slot = slots, 1, -1 do
+				if GetSlotItemID(bag, slot) == SHARD_ID then
+					local _, locked = GetSlotInfo(bag, slot)
+					if not locked then
+						PickupSlot(bag, slot)
+						local kind, id = GetCursorInfo()
+						if kind ~= "item" or id ~= SHARD_ID then ClearCursor() return false end
+						PickupSlot(toBag, toSlot)
+						if GetCursorInfo() then ClearCursor() return false end -- refused: it goes back
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- Loose shards that fit in the soul bag, while auto-delete is on (or "Delete extras now" was
+-- clicked).
+function ns.NeedsFill(stats)
+	return stats.free > 0 and stats.outside > 0
+end
+
 -- Bag events land here: work out what is owed, announce what actually went.
 local function RunAutoDelete(stats)
 	local total = stats.inSoul + stats.outside
@@ -312,23 +362,51 @@ local function RunAutoDelete(stats)
 	end
 	if (db.autoDelete or manualRun) and not deleteBlocked then
 		pendingExcess = Excess(stats)
+		if ns.NeedsFill(stats) then pendingExcess = math.max(pendingExcess, 1) end -- a move is owed
 	else
 		pendingExcess = 0
 	end
 	if pendingExcess == 0 then manualRun = false end
 end
 
--- Call ONLY from a hardware event handler (OnKeyDown / OnClick / OnMouseUp).
-function ns.HardwareDeletePass()
+-- Call ONLY from a hardware event handler (OnKeyDown / OnClick / OnMouseUp), or from an action
+-- hook (fromHook), which runs inside the player's own button press.
+function ns.HardwareDeletePass(fromHook)
 	if pendingExcess <= 0 or awaitingUpdate or deleteBlocked or not lastStats then return end
 	-- Re-check against a fresh scan so a stale queue can never over-delete.
 	local _, stats = Scan()
+	-- The soul bag is filled before anything is deleted: this press moves a shard instead.
+	if ns.NeedsFill(stats) then
+		inHardwarePass, passBlocked = true, false
+		local ok, moved = pcall(ns.FillSoulBag)
+		inHardwarePass = false
+		if fromHook and passBlocked then
+			ns.RefuseHook(fromHook)
+			return
+		end
+		report["fill"] = (ok and moved) and "moved a shard into the soul bag" or ("could not move a shard" .. (ok and "" or (": " .. tostring(moved))))
+		if ok and moved then
+			awaitingUpdate, pendingExcess = true, 0
+			if C_Timer and C_Timer.After then
+				C_Timer.After(1.5, function()
+					if awaitingUpdate then awaitingUpdate = false Refresh() end
+				end)
+			end
+		end
+		return
+	end
 	local excess = Excess(stats)
 	if excess <= 0 then pendingExcess = 0 return end
 
 	inHardwarePass, passBlocked = true, false
 	local ok, issued = pcall(DeleteShards, excess)
 	inHardwarePass = false
+	if fromHook and passBlocked then
+		-- The client did not count this input as a button press: stop using that one input (in
+		-- combat or out of it, judged apart), and leave the rest, key presses and clicks alone.
+		ns.RefuseHook(fromHook)
+		return
+	end
 	if ok and issued == 0 and passBlocked then
 		blockedStrikes = blockedStrikes + 1
 		if blockedStrikes >= 3 then
@@ -395,6 +473,51 @@ end
 -- Saved variables are available before this file runs, so a client that refused this last
 -- session never tries again.
 if not (ShardGridDB and ShardGridDB.noKeyListener) then BuildKeyListener() end
+
+-- Action hooks: the delete pass also runs right after the player uses an action bar slot, casts,
+-- uses an equipped item, jumps or interacts. Mouse buttons and the wheel in the game world are
+-- deliberately not hooked: tested in game, the client refused a delete from them, pressed or
+-- released, and showed "Interface action failed" each time. Those calls happen inside the player's own button
+-- press, whether it came from a key, a mouse click on the action bar or a controller button.
+-- The key listener can't see controller buttons at all (EnableGamePadButton is protected), so
+-- without these a controller player's presses never delete anything.
+ns.hookOff, ns.hookOffOrder = {}, {}
+
+-- An input the client refused, recorded under its own name ("UseAction", or "UseAction in
+-- combat"), so the inputs that do count keep working. It is saved, so the game's "Interface action
+-- failed" message shows at most once for it, not once a session.
+function ns.RefuseHook(key)
+	if ns.hookOff[key] then return end
+	ns.hookOff[key] = true
+	if db then db.hookRefused = db.hookRefused or {} db.hookRefused[key] = true end
+	ns.hookOffOrder[#ns.hookOffOrder + 1] = key
+	report["action hooks refused"] = table.concat(ns.hookOffOrder, ", ")
+end
+
+function ns.BuildActionHooks()
+	if ns.actionHooked or not hooksecurefunc then return end
+	ns.actionHooked = true
+	local function AfterAction(name)
+		return function()
+			if pendingExcess <= 0 or ns.actionHooksOff then return end
+			local key = InCombatLockdown() and (name .. " in combat") or name
+			if ns.hookOff[key] or (db and db.hookRefused and db.hookRefused[key]) then return end
+			-- A spell waiting for an item target would take the shard we pick up as its target.
+			if SpellIsTargeting and SpellIsTargeting() then return end
+			ns.hookTrying = key
+			ns.HardwareDeletePass(key)
+			ns.hookTrying = nil
+		end
+	end
+	local hooked = {}
+	for _, name in ipairs({ "UseAction", "CastSpellByName", "CastSpellByID", "UseInventoryItem", "JumpOrAscendStart", "InteractUnit" }) do
+		if type(_G[name]) == "function" and pcall(hooksecurefunc, name, AfterAction(name)) then
+			hooked[#hooked + 1] = name
+		end
+	end
+	report["action hooks"] = #hooked > 0 and table.concat(hooked, ", ") or "none (this client has none of them)"
+end
+ns.BuildActionHooks()
 
 ns.SetStage("panels")
 -- ------------------------------------------------------------------
@@ -3468,7 +3591,7 @@ local function BuildConfig()
 	AddCheck(col, y, "Auto-delete extra shards",
 		function() return db.autoDelete end,
 		function(v) SetAutoDelete(v) end,
-		"Destroys Soul Shards sitting in your normal bags once you hold more than your soul bag capacity plus the allowance below. Shards inside the soul bag are never touched.")
+		"Destroys Soul Shards sitting in your normal bags once you hold more than your soul bag capacity plus the allowance below. Loose shards are moved into empty soul bag slots first, and shards inside the soul bag are never touched.\n\nTurning this on leaves the allowance at its maximum, so nothing is deleted until you bring \"Extra shards to keep\" down.")
 	y = y - 28
 	AddSlider(col, y, "Extra shards to keep", {
 		min = 0, max = KEEP_MAX, step = 1,
@@ -3488,7 +3611,7 @@ local function BuildConfig()
 	AddCheck(col, y, "Delete extras on a key press",
 		function() return not db.noKeyListener end,
 		function(v) db.noKeyListener = not v ns.ApplyKeyListener() end,
-		"The game only lets an addon delete an item during a real key press or click. With this on, Shard Grid watches for your next key press (without taking it). If your client objects to that, untick it and extras are deleted when you click the grid instead.")
+		"The game only lets an addon delete an item during a real key press or click. With this on, Shard Grid watches for your next key press (without taking it). If your client objects to that, untick it and extras are deleted when you click the grid instead.\n\nUsing an action bar button or a controller button, jumping or interacting also deletes, whether this is on or not. Clicking, turning or running with the mouse in the game world can't: the game refuses a delete from mouse buttons there. They are skipped while a spell is waiting for a target. If the game refuses a delete from one of them, only that one stops being used (judged separately in and out of combat); /shards debug lists any that were refused.")
 
 	-- status + manual delete sit under the overflow options
 	y = y - 30
@@ -3501,6 +3624,7 @@ local function BuildConfig()
 		if not s then status:SetText("") return end
 		local cap = s.soulSlots + db.keepExtra
 		local txt = ("Limit: %d (bag %d + %d extra). Over limit now: %d."):format(cap, s.soulSlots, db.keepExtra, Excess(s))
+		if ns.NeedsFill(s) then txt = txt .. " Loose shards go into your soul bag first, one per key press." end
 		if db.onlyWithBag and not s.hasSoulBag then txt = "Paused: no soul bag equipped - nothing will be deleted." end
 		if deleteBlocked then txt = "|cffff4040Automatic deletion is blocked by the client.|r" end
 		status:SetText(txt)
@@ -3511,7 +3635,7 @@ local function BuildConfig()
 	Place(colL, now, "TOPLEFT", 20, y)
 	now:SetText("Delete extras now")
 	now:SetScript("OnClick", function()
-		if not lastStats or Excess(lastStats) <= 0 then
+		if not lastStats or (Excess(lastStats) <= 0 and not ns.NeedsFill(lastStats)) then
 			Print("Nothing over the limit.")
 			return
 		end
@@ -3520,6 +3644,42 @@ local function BuildConfig()
 		Refresh()
 		ns.HardwareDeletePass()
 	end)
+
+	-- How auto-delete works, every condition in one place. Measured once laid out, so the next
+	-- section starts below it whatever the font makes of the wrapping.
+	y = y - 34
+	local guide = colL:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	Place(colL, guide, "TOPLEFT", 22, y)
+	guide:SetWidth(COL_W - 40)
+	guide:SetJustifyH("LEFT")
+	guide:SetSpacing(2)
+	local H, G = "|cffffd100", "|cffb0b0b0"
+	guide:SetText(table.concat({
+		H .. "How auto-delete works|r",
+		"",
+		H .. "What is deleted|r",
+		"- Only shards outside your soul bag, beyond its slots plus \"Extra shards to keep\".",
+		"- Empty soul bag slots are filled first: loose shards are moved in before any are deleted.",
+		"- Shards inside the soul bag are never deleted.",
+		"- One shard each time, and the next waits until your bags have updated.",
+		"- Turning it on leaves \"Extra shards to keep\" at its maximum, so nothing goes until you lower it.",
+		"",
+		H .. "What sets it off|r " .. G .. "(the game allows a delete only during a real button press)|r",
+		"- Pressing a key, unless you untick \"Delete extras on a key press\".",
+		"- Using an action bar button: with a key, a mouse click or a controller button.",
+		"- Jumping, or interacting with something.",
+		"- Clicking the grid, the alert icon or Delete extras now.",
+		"",
+		H .. "What doesn't|r",
+		"- Clicking, turning or running with the mouse in the game world: the game refuses it.",
+		"- Typing in chat, or holding an item on the cursor.",
+		"- While a spell is waiting for a target.",
+		"- \"Pause while no soul bag is equipped\" on, with no soul bag.",
+		"- An input the game refused once: it shows \"Interface action failed\" one time, then is left alone (/shards debug lists it).",
+	}, "\n"))
+	local guideH = (guide.GetStringHeight and guide:GetStringHeight()) or 0
+	if type(guideH) ~= "number" or guideH < 100 then guideH = 290 end
+	y = y - guideH - 12
 
 	y = y - 40
 	AddHeader(col, y, "Healthstones")
