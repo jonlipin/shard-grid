@@ -3645,42 +3645,6 @@ local function BuildConfig()
 		ns.HardwareDeletePass()
 	end)
 
-	-- How auto-delete works, every condition in one place. Measured once laid out, so the next
-	-- section starts below it whatever the font makes of the wrapping.
-	y = y - 34
-	local guide = colL:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	Place(colL, guide, "TOPLEFT", 22, y)
-	guide:SetWidth(COL_W - 40)
-	guide:SetJustifyH("LEFT")
-	guide:SetSpacing(2)
-	local H, G = "|cffffd100", "|cffb0b0b0"
-	guide:SetText(table.concat({
-		H .. "How auto-delete works|r",
-		"",
-		H .. "What is deleted|r",
-		"- Only shards outside your soul bag, beyond its slots plus \"Extra shards to keep\".",
-		"- Empty soul bag slots are filled first: loose shards are moved in before any are deleted.",
-		"- Shards inside the soul bag are never deleted.",
-		"- One shard each time, and the next waits until your bags have updated.",
-		"- Turning it on leaves \"Extra shards to keep\" at its maximum, so nothing goes until you lower it.",
-		"",
-		H .. "What sets it off|r " .. G .. "(the game allows a delete only during a real button press)|r",
-		"- Pressing a key, unless you untick \"Delete extras on a key press\".",
-		"- Using an action bar button: with a key, a mouse click or a controller button.",
-		"- Jumping, or interacting with something.",
-		"- Clicking the grid, the alert icon or Delete extras now.",
-		"",
-		H .. "What doesn't|r",
-		"- Clicking, turning or running with the mouse in the game world: the game refuses it.",
-		"- Typing in chat, or holding an item on the cursor.",
-		"- While a spell is waiting for a target.",
-		"- \"Pause while no soul bag is equipped\" on, with no soul bag.",
-		"- An input the game refused once: it shows \"Interface action failed\" one time, then is left alone (/shards debug lists it).",
-	}, "\n"))
-	local guideH = (guide.GetStringHeight and guide:GetStringHeight()) or 0
-	if type(guideH) ~= "number" or guideH < 100 then guideH = 290 end
-	y = y - guideH - 12
-
 	y = y - 40
 	AddHeader(col, y, "Healthstones")
 	y = y - 22
@@ -3889,9 +3853,44 @@ local function BuildConfig()
 	y = y - 40
 	lowest = math.min(lowest, y)
 
-	local baseH = math.max(320, -lowest + 24)
+	-- How auto-delete works, every condition in one place, below all the options and across both
+	-- columns. Measured once laid out; ns.ResizeOptions keeps it under whichever column ends lower.
+	local guide = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	guide:SetWidth(CONTENT_W - 26 - 44)
+	guide:SetJustifyH("LEFT")
+	guide:SetSpacing(2)
+	local H, G = "|cffffd100", "|cffb0b0b0"
+	guide:SetText(table.concat({
+		H .. "How auto-delete works|r",
+		"",
+		H .. "What is deleted|r",
+		"- Only shards outside your soul bag, beyond its slots plus \"Extra shards to keep\".",
+		"- Empty soul bag slots are filled first: loose shards are moved in before any are deleted.",
+		"- Shards inside the soul bag are never deleted.",
+		"- One shard each time, and the next waits until your bags have updated.",
+		"- Turning it on leaves \"Extra shards to keep\" at its maximum, so nothing goes until you lower it.",
+		"",
+		H .. "What sets it off|r " .. G .. "(the game allows a delete only during a real button press)|r",
+		"- Pressing a key, unless you untick \"Delete extras on a key press\".",
+		"- Using an action bar button: with a key, a mouse click or a controller button.",
+		"- Jumping, or interacting with something.",
+		"- Clicking the grid, the alert icon or Delete extras now.",
+		"",
+		H .. "What doesn't|r",
+		"- Clicking, turning or running with the mouse in the game world: the game refuses it.",
+		"- Typing in chat, or holding an item on the cursor.",
+		"- While a spell is waiting for a target.",
+		"- \"Pause while no soul bag is equipped\" on, with no soul bag.",
+		"- An input the game refused once: it shows \"Interface action failed\" one time, then is left alone (/shards debug lists it).",
+	}, "\n"))
+	local guideH = (guide.GetStringHeight and guide:GetStringHeight()) or 0
+	if type(guideH) ~= "number" or guideH < 60 then guideH = 220 end
+
+	local baseH = math.max(320, -lowest + 24 + 16 + guideH)
 	function ns.ResizeOptions()
 		local extra = math.max(ColumnExtra(colL, -math.huge), ColumnExtra(colR, -math.huge))
+		guide:ClearAllPoints()
+		guide:SetPoint("TOPLEFT", content, "TOPLEFT", 22, lowest - extra - 16)
 		CONTENT_H = baseH + extra
 		content:SetSize(CONTENT_W - 26, CONTENT_H)
 		local viewH = math.min(CONTENT_H + 8, VIEW_MAX_H)

@@ -2,7 +2,7 @@
 ## Title: Shard Grid
 ## Notes: Everything you do with Soul Shards in one small window: a bag-style grid, a low shard alert, summon requests, a soulstone tracker and Healthstone trades.|n|cff00ccff/shards|r for options.
 ## Author: Jon
-## Version: 1.6.1
+## Version: 1.6.2
 ## LoadSavedVariablesFirst: 1
 ## OptionalDeps: EllesmereUI
 ## SavedVariablesPerCharacter: ShardGridDB
