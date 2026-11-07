@@ -59,6 +59,9 @@ local DEFAULTS = {
 	summonPopup = true,     -- pop the window up when a request arrives
 	summonAnnounce = true,  -- tell party / raid when you start a summon
 	summonWhisper = true,   -- whisper the player being summoned
+	summonSay = false,      -- also post the party / raid message in /say
+	summonNudge = true,     -- ask in /say for clickers when nobody helps
+	summonNudgeAfter = 15,  -- seconds of channeling before asking
 	summonSound = true,
 	summonWhisperAny = true, -- accept whispers from players outside the group (they get an Invite button)
 	summonMin = false,
@@ -68,6 +71,8 @@ local DEFAULTS = {
 	stonePopup = true,
 	stoneSoloHide = true,     -- hide the tracker while not in a group
 	stoneAnnounce = false,    -- tell the group when you soulstone somebody
+	stoneAlert = true,        -- an icon while a Soulstone in your bags is ready to use
+	healthAlert = true,       -- an icon while you have no Healthstone in your bags
 	tradeHealthstone = false,
 	tradeGroupOnly = true,
 	tradeCreate = true,   -- offer a Create Healthstone button on the trade window
@@ -445,7 +450,10 @@ local function BuildKeyListener()
 		keys:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
 		keys:EnableKeyboard(true)
 		keys:SetPropagateKeyboardInput(true)
-		keys:SetScript("OnKeyDown", function() if pendingExcess > 0 then ns.HardwareDeletePass() end end)
+		keys:SetScript("OnKeyDown", function()
+			if ns.SayOnKey then ns.SayOnKey() end
+			if pendingExcess > 0 then ns.HardwareDeletePass() end
+		end)
 		keyListener = keys
 	end)
 	ns.SetStage("loading")
@@ -787,6 +795,223 @@ local function UpdateAlert(stats)
 	alert.label:SetText(low and "Low shards" or "Alert preview")
 	alert:Show()
 	if alert.pulse and not alert.pulse:IsPlaying() then alert.pulse:Play() end
+end
+
+-- ------------------------------------------------------------------
+-- Soulstone ready and No Healthstone: two more movable icons, like the low-shard alert.
+-- Soulstone ready shows while a Soulstone in your bags is off cooldown, so it isn't left unused.
+-- Using a stone starts a 30 minute cooldown, as long as the stone lasts, so a ready stone in your
+-- bags means none of yours is on anybody. No Healthstone shows while you know Create Healthstone
+-- and have no Healthstone in your bags.
+-- ------------------------------------------------------------------
+do
+	-- (Shard Grid's IsSecret is defined further down the file.)
+	local function Hidden(v) return issecretvalue ~= nil and issecretvalue(v) end
+
+	-- A pulsing icon with a label under it, dragged like the low-shard alert. Its position is
+	-- saved under db[key .. "X"] and db[key .. "Y"].
+	local function NewAlertIcon(frameName, key, icon, r, g, b, label, offsetX)
+		local f = CreateFrame("Frame", frameName, UIParent)
+		f:SetFrameStrata("MEDIUM")
+		f:SetMovable(true)
+		f:SetClampedToScreen(true)
+		f:EnableMouse(true)
+		f:RegisterForDrag("LeftButton")
+		f:Hide()
+
+		f.bg = f:CreateTexture(nil, "BACKGROUND")
+		f.bg:SetAllPoints()
+		f.bg:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+
+		f.icon = f:CreateTexture(nil, "ARTWORK")
+		f.icon:SetPoint("TOPLEFT", 2, -2)
+		f.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+		f.icon:SetTexture(icon)
+		f.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+		f.ring = f:CreateTexture(nil, "OVERLAY")
+		f.ring:SetAllPoints()
+		f.ring:SetTexture("Interface\\Common\\WhiteIconFrame")
+		f.ring:SetVertexColor(r, g, b)
+
+		f.glow = f:CreateTexture(nil, "OVERLAY", nil, 1)
+		f.glow:SetPoint("CENTER")
+		f.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+		f.glow:SetBlendMode("ADD")
+		f.glow:SetVertexColor(r, g, b)
+
+		f.label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		f.label:SetPoint("TOP", f, "BOTTOM", 0, -2)
+		f.label:SetTextColor(r, g, b)
+		f.label:SetText(label)
+		f.labelText = label
+
+		pcall(function()
+			local ag = f.glow:CreateAnimationGroup()
+			ag:SetLooping("BOUNCE")
+			local a = ag:CreateAnimation("Alpha")
+			a:SetFromAlpha(1)
+			a:SetToAlpha(0.25)
+			a:SetDuration(0.6)
+			f.pulse = ag
+		end)
+
+		function f.RestorePosition()
+			f:ClearAllPoints()
+			local x, y = db[key .. "X"], db[key .. "Y"]
+			if x and y then
+				f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+			else
+				f:SetPoint("CENTER", UIParent, "CENTER", offsetX, 120) -- beside the low-shard alert
+			end
+		end
+		f:SetScript("OnDragStart", function(self)
+			if not db.locked then self:StartMoving() end
+		end)
+		f:SetScript("OnDragStop", function(self)
+			self:StopMovingOrSizing()
+			local x, y = self:GetCenter()
+			if x and y then db[key .. "X"], db[key .. "Y"] = x, y end
+			f.RestorePosition()
+		end)
+		f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+		-- Shown while `on`, or as a preview while "Show alert now" is ticked.
+		function f.Set(on)
+			if not (on or alertPreview) then
+				if f.pulse then f.pulse:Stop() end
+				f:Hide()
+				return
+			end
+			local size = db.alertSize
+			f:SetSize(size, size)
+			f.glow:SetSize(size * 1.75, size * 1.75)
+			f.label:SetText(on and f.labelText or "Alert preview")
+			f:Show()
+			if f.pulse and not f.pulse:IsPlaying() then f.pulse:Play() end
+		end
+		return f
+	end
+
+	-- ---- Soulstone ready ----
+	local STONE_ITEMS = { 16896, 16895, 16893, 16892, 5232 } -- Major, Greater, Soulstone, Lesser, Minor
+	local sa = NewAlertIcon("ShardGridStoneAlert", "stoneAlert", "Interface\\Icons\\INV_Misc_Orb_04", 0.6, 0.35, 1, "Soulstone ready", 70)
+	sa.label:SetTextColor(0.75, 0.55, 1)
+	ns.RestoreStoneAlertPosition = sa.RestorePosition
+	sa:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Soulstone ready", 0.75, 0.55, 1)
+		local name = self.itemID and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(self.itemID)) or (GetItemInfo and GetItemInfo(self.itemID)))
+		if type(name) ~= "string" or Hidden(name) then name = "A Soulstone" end
+		GameTooltip:AddLine(name .. " is in your bags and off cooldown. Target someone and use it so it isn't wasted.", 1, 1, 1, true)
+		GameTooltip:AddLine("Drag to move; /shards for options.", 0.7, 0.7, 0.7, true)
+		GameTooltip:Show()
+	end)
+
+	local function Count(id)
+		local fn = (C_Item and C_Item.GetItemCount) or GetItemCount
+		if not fn then return 0 end
+		local ok, n = pcall(fn, id)
+		return (ok and type(n) == "number" and not Hidden(n)) and n or 0
+	end
+
+	-- The first Soulstone in your bags: its item ID, whether it is ready (nil when the game won't
+	-- say), and when it will be. A cooldown of 1.5 s or less is the global cooldown, not the stone's.
+	function ns.ReadyStone()
+		local now = GetTime()
+		for _, id in ipairs(STONE_ITEMS) do
+			if Count(id) > 0 then
+				local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+				if not fn then return id, nil end
+				local ok, start, duration = pcall(fn, id)
+				if not ok or Hidden(start) or Hidden(duration) then return id, nil end
+				if type(start) ~= "number" or type(duration) ~= "number" or start == 0 or duration <= 1.5 then
+					return id, true
+				end
+				local readyAt = start + duration
+				return id, readyAt <= now, readyAt
+			end
+		end
+	end
+
+	local wake = 0 -- only the latest scheduled re-check counts
+	function ns.UpdateStoneAlert()
+		if not db then return end
+		local id, ready, readyAt
+		if select(2, UnitClass("player")) == "WARLOCK" and db.stoneAlert then id, ready, readyAt = ns.ReadyStone() end
+		if not db.stoneAlert then
+			report["soulstone ready"] = "alert off"
+		elseif not id then
+			report["soulstone ready"] = "no Soulstone in your bags"
+		elseif ready == nil then
+			report["soulstone ready"] = "can't read the stone's cooldown"
+		elseif ready then
+			report["soulstone ready"] = "yes (item " .. id .. ")"
+		else
+			report["soulstone ready"] = ("on cooldown, ready in %ds"):format(math.max(0, math.floor(readyAt - GetTime())))
+			wake = wake + 1
+			local mine = wake
+			if C_Timer and C_Timer.After then
+				C_Timer.After(math.max(0.1, readyAt - GetTime() + 0.1), function()
+					if mine == wake then ns.UpdateStoneAlert() end
+				end)
+			end
+		end
+		sa.itemID = id
+		if id then
+			local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)) or (GetItemIcon and GetItemIcon(id))
+			if icon and not Hidden(icon) then sa.icon:SetTexture(icon) end
+		end
+		sa.Set(id and ready)
+	end
+
+	-- ---- No Healthstone ----
+	local CREATE_HEALTHSTONE = { 6201, 6202, 5699, 11729, 11730, 27230 } -- every rank
+	local ha = NewAlertIcon("ShardGridHealthAlert", "healthAlert", "Interface\\Icons\\INV_Stone_04", 0.3, 1, 0.35, "No Healthstone", -70)
+	ns.RestoreHealthAlertPosition = ha.RestorePosition
+	ha:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("No Healthstone", 0.3, 1, 0.35)
+		GameTooltip:AddLine("There is no Healthstone in your bags. Cast Create Healthstone to make one.", 1, 1, 1, true)
+		GameTooltip:AddLine("Drag to move; /shards for options.", 0.7, 0.7, 0.7, true)
+		GameTooltip:Show()
+	end)
+
+	local function KnowsCreateHealthstone()
+		for _, id in ipairs(CREATE_HEALTHSTONE) do
+			local fn = IsPlayerSpell or IsSpellKnown
+			local ok, known = pcall(fn, id)
+			if ok and known and not Hidden(known) then return true end
+		end
+		return false
+	end
+
+	function ns.UpdateHealthAlert()
+		if not db then return end
+		local missing = false
+		if not db.healthAlert then
+			report["healthstone"] = "alert off"
+		elseif select(2, UnitClass("player")) ~= "WARLOCK" then
+			report["healthstone"] = "not a warlock"
+		elseif not KnowsCreateHealthstone() then
+			report["healthstone"] = "Create Healthstone not learned yet"
+		elseif ns.FindHealthstone and ns.FindHealthstone() then
+			report["healthstone"] = "one in your bags"
+		else
+			missing = true
+			report["healthstone"] = "none in your bags"
+		end
+		ha.Set(missing)
+	end
+
+	local ev = CreateFrame("Frame")
+	pcall(ev.RegisterEvent, ev, "BAG_UPDATE_COOLDOWN")
+	pcall(ev.RegisterEvent, ev, "PLAYER_ENTERING_WORLD")
+	pcall(ev.RegisterEvent, ev, "SPELLS_CHANGED")
+	ev:SetScript("OnEvent", function()
+		ns.UpdateStoneAlert()
+		ns.UpdateHealthAlert()
+	end)
 end
 
 ns.SetStage("grid cells")
@@ -1285,6 +1510,8 @@ function Refresh()
 
 	RunAutoDelete(stats)
 	UpdateAlert(stats)
+	ns.UpdateStoneAlert()
+	ns.UpdateHealthAlert()
 	if ns.UpdateSummonWindow and ShardGridSummons and ShardGridSummons:IsShown() then ns.UpdateSummonWindow() end
 	if ns.UpdateSummonButton and ShardGridSummonButton and ShardGridSummonButton:IsShown() then ns.UpdateSummonButton() end
 	if ns.UpdateMakeButton and TradeFrame and TradeFrame:IsShown() then ns.UpdateMakeButton() end
@@ -1807,6 +2034,9 @@ local function OnSummonClicked(req)
 	if channel then
 		SendChat(FillTemplate(db.summonGroupMsg or DEFAULT_GROUP_MSG, req, where, left), channel)
 	end
+	if db.summonSay then
+		SendChat(FillTemplate(db.summonGroupMsg or DEFAULT_GROUP_MSG, req, where, left), "SAY")
+	end
 end
 
 -- Send the summon messages for a player who wasn't clicked in the list (the floating button).
@@ -2159,6 +2389,7 @@ local function FindHealthstone()
 		end
 	end
 end
+ns.FindHealthstone = FindHealthstone
 
 local function OfferHealthstone()
 	if not db or not db.tradeHealthstone or tradeBlocked then return end
@@ -2262,10 +2493,8 @@ sumEvents:SetScript("OnEvent", function(_, event, text, sender, ...)
 	if not db then return end
 	if event == "UNIT_SPELLCAST_SENT" then
 		-- args: unit, target name, castGUID, spellID
-		local unit, target, _, spellID = text, sender, ...
-		if unit == "player" and spellID == SUMMON_SPELL_ID and type(target) == "string" and target ~= "" then
-			ns.SummonMessagesFor(target)
-		end
+		local _, spellID = ...
+		ns.OnSummonCastSent(text, sender, spellID)
 		return
 	end
 	if event == "PLAYER_REGEN_DISABLED" then
@@ -2302,6 +2531,135 @@ sumEvents:SetScript("OnEvent", function(_, event, text, sender, ...)
 		end
 	end
 end)
+
+-- Any Ritual of Summoning you cast, however it was started: a name in the list, the floating
+-- button, the spell from your spellbook or action bar, a macro or a click-casting addon. The
+-- game can hide this event's values from addons (they arrive as secret values, which can't
+-- even be compared), so each one is checked first. With the target's name hidden, the
+-- player you have targeted counts, if they are in your group. /shards debug shows the result.
+function ns.OnSummonCastSent(unit, target, spellID)
+	if IsSecret(unit) or unit ~= "player" then return end
+	if IsSecret(spellID) then
+		report["last summon cast"] = "a spell the game kept hidden, so no messages"
+		return
+	end
+	if spellID ~= SUMMON_SPELL_ID then return end
+	local name, how
+	if not IsSecret(target) and type(target) == "string" and target ~= "" then
+		name, how = target, "the spell's target"
+	else
+		local ok, t = pcall(UnitName, "target")
+		local inGroup = (UnitInParty and UnitInParty("target")) or (UnitInRaid and UnitInRaid("target"))
+		if ok and not IsSecret(t) and type(t) == "string" and t ~= "" and inGroup and not UnitIsUnit("target", "player") then
+			name, how = t, "your target (the game hid the spell's target)"
+		end
+	end
+	local stamp = date and date("%H:%M:%S") or ""
+	if not name then
+		if ns.NoteSummonCast then ns.NoteSummonCast(nil) end
+		report["last summon cast"] = stamp .. " no name to send to (the game hid the spell's target and your target isn't in your group)"
+		return
+	end
+	report["last summon cast"] = stamp .. " " .. ShortName(name) .. ", from " .. how
+	if ns.NoteSummonCast then ns.NoteSummonCast(ShortName(name)) end
+	ns.SummonMessagesFor(name)
+end
+
+-- Nobody helping: while you are still channeling Ritual of Summoning some seconds after starting
+-- it, ask in /say for people to click the portal. Outside an instance the game only lets an
+-- addon post in /say during a key press or click, so the message waits for your next key press,
+-- or for a click on the small button that pops up. Inside an instance it goes at once.
+do
+	local cast -- { short, at, asked }
+	local prompt = CreateFrame("Button", "ShardGridSayPrompt", UIParent, "UIPanelButtonTemplate")
+	prompt:SetSize(200, 26)
+	prompt:SetFrameStrata("HIGH")
+	prompt:SetMovable(true)
+	prompt:SetClampedToScreen(true)
+	prompt:RegisterForDrag("LeftButton")
+	prompt:SetText("Ask for clickers in /say")
+	prompt:Hide()
+
+	function ns.RestoreSayPromptPosition()
+		prompt:ClearAllPoints()
+		if db.sayPromptX and db.sayPromptY then
+			prompt:SetPoint("CENTER", UIParent, "BOTTOMLEFT", db.sayPromptX, db.sayPromptY)
+		else
+			prompt:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+		end
+	end
+	prompt:SetScript("OnDragStart", function(self) if not db.locked then self:StartMoving() end end)
+	prompt:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local x, y = self:GetCenter()
+		if x and y then db.sayPromptX, db.sayPromptY = x, y end
+		ns.RestoreSayPromptPosition()
+	end)
+	prompt:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Nobody is helping with the summon", 1, 1, 1)
+		GameTooltip:AddLine("Click to ask in /say for people to click the portal. Any key press does the same. Drag to move.", nil, nil, nil, true)
+		GameTooltip:Show()
+	end)
+	prompt:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+	local function Message()
+		local who = cast and cast.short
+		if who then return ("Summoning %s: please click the portal to help!"):format(who) end
+		return "Summoning: please click the portal to help!"
+	end
+
+	local function Send()
+		if not cast or cast.asked then return end
+		cast.asked = true
+		prompt:Hide()
+		SendChat(Message(), "SAY")
+		report["summon help asked"] = (date and date("%H:%M:%S ") or "") .. "in /say"
+	end
+	prompt:SetScript("OnClick", Send)
+
+	-- Called from the key listener: a key press is the hardware event /say needs.
+	function ns.SayOnKey()
+		if cast and cast.due and not cast.asked then Send() end
+	end
+
+	local function Channeling()
+		if not UnitChannelInfo then return false end
+		local ok, name, _, _, _, _, _, _, spellID = pcall(UnitChannelInfo, "player")
+		if not ok or IsSecret(name) or IsSecret(spellID) then return nil end -- the game won't say
+		if spellID == SUMMON_SPELL_ID then return true end
+		return name ~= nil and name == SummonSpellName()
+	end
+
+	function ns.NoteSummonCast(short)
+		if not (db and db.summonNudge) then return end
+		cast = { short = short, at = GetTime() }
+	end
+
+	local function Tick()
+		if not cast or not db then return end
+		local elapsed = GetTime() - cast.at
+		local on = Channeling()
+		if on == false and elapsed > 3 then -- finished, cancelled or never started
+			cast = nil
+			prompt:Hide()
+			return
+		end
+		if cast.asked or on ~= true or elapsed < (db.summonNudgeAfter or 15) then return end
+		if not cast.due then
+			cast.due = true
+			local inInstance = IsInInstance and IsInInstance()
+			if inInstance then
+				Send()
+			else
+				ns.RestoreSayPromptPosition()
+				prompt:Show()
+				report["summon help asked"] = "waiting for a key press or a click on the button"
+			end
+		end
+	end
+	if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(0.5, Tick) end
+end
 
 ns.SetStage("summon button frame")
 -- ------------------------------------------------------------------
@@ -3409,9 +3767,6 @@ local function BuildConfig()
 		ns.HostOptions(config, "TOPLEFT", 0, -22, 1, CONTENT_W, viewH)
 		ns.SyncConfig()
 	end)
-	config:SetScript("OnHide", function()
-		if alertPreview then alertPreview = false Refresh() end
-	end)
 	config:Hide()
 	tinsert(UISpecialFrames, "ShardGridConfig")
 
@@ -3662,6 +4017,11 @@ local function BuildConfig()
 		function() return db.tradeCreate end,
 		function(v) db.tradeCreate = v ns.UpdateMakeButton() end,
 		"When a trade opens and you have no Healthstone, a button appears on the trade window to cast Create Healthstone. It uses a Soul Shard, and goes away once the stone is made.")
+	y = y - 26
+	AddCheck(col, y, "Alert when I have no Healthstone",
+		function() return db.healthAlert end,
+		function(v) db.healthAlert = v ns.UpdateHealthAlert() end,
+		"A separate, movable icon that pulses while there is no Healthstone in your bags, once you know Create Healthstone. It uses the alert icon size, and Show alert now shows it too, for positioning.")
 
 	y = y - 36
 	AddHeader(col, y, "Soulstone tracker")
@@ -3684,6 +4044,11 @@ local function BuildConfig()
 		function() return db.stoneAnnounce end,
 		function(v) db.stoneAnnounce = v end,
 		"Posts a line to party or raid naming who you stoned and how long it lasts. Only stones you cast are announced, so several warlocks will not repeat each other.")
+	y = y - 26
+	AddCheck(col, y, "Alert when my Soulstone is ready to use",
+		function() return db.stoneAlert end,
+		function(v) db.stoneAlert = v ns.UpdateStoneAlert() end,
+		"A separate, movable icon that pulses while a Soulstone in your bags is off cooldown, so it isn't left unused. It uses the alert icon size, and Show alert now shows it too, for positioning.")
 	y = y - 28
 	local showStones = CreateFrame("Button", nil, col, "UIPanelButtonTemplate")
 	showStones:SetSize(170, 22)
@@ -3748,7 +4113,7 @@ local function BuildConfig()
 	AddCheck(col, y, "Show alert now (to position it)",
 		function() return alertPreview end,
 		function(v) alertPreview = v Refresh() end,
-		"Keeps the alert icon visible so you can drag it where you want. Turns itself off when this window closes.")
+		"Keeps the alert icons (low shards, Soulstone ready and No Healthstone) visible so you can drag them where you want, with the options closed too. Untick it when they are placed; a reload turns it off as well.")
 
 
 
@@ -3772,8 +4137,24 @@ local function BuildConfig()
 	AddCheck(col, y, "Tell party / raid and ask for clickers",
 		function() return db.summonAnnounce end,
 		function(v) db.summonAnnounce = v end,
-		"Posts the message below to party, raid or instance chat when you click a name.")
-	y = y - 24
+		"Posts the message below to party, raid or instance chat whenever you summon: from the list, the floating button, or casting Ritual of Summoning yourself.")
+	y = y - 26
+	AddCheck(col, y, "Also say it in /say",
+		function() return db.summonSay end,
+		function(v) db.summonSay = v end,
+		"Posts the same message in /say as well, for players standing near you.")
+	y = y - 26
+	AddCheck(col, y, "Ask in /say when nobody helps",
+		function() return db.summonNudge end,
+		function(v) db.summonNudge = v end,
+		"If you are still channeling Ritual of Summoning after the time below, asks in /say for people to click the portal. Outside an instance the game only allows /say on a key press or click, so it goes on your next key press, or when you click the button that pops up.")
+	y = y - 28
+	AddSlider(col, y, "Ask after (seconds)", {
+		min = 5, max = 60, step = 5,
+		get = function() return db.summonNudgeAfter end,
+		set = function(v) db.summonNudgeAfter = v end,
+	})
+	y = y - 44
 	local groupBox = AddTextBox(col, y, "summonGroupMsg", DEFAULT_GROUP_MSG, "Party / raid message", PLACEHOLDER_HELP, TEXTBOX_W - 52)
 	local groupTest = CreateFrame("Button", nil, col, "UIPanelButtonTemplate")
 	groupTest:SetSize(48, 22)
@@ -3791,7 +4172,7 @@ local function BuildConfig()
 	AddCheck(col, y, "Whisper the player being summoned",
 		function() return db.summonWhisper end,
 		function(v) db.summonWhisper = v end,
-		"Sends the message below to the player when you click their name.")
+		"Sends the message below to the player whenever you summon them: from the list, the floating button, or casting Ritual of Summoning yourself.")
 	y = y - 24
 	local whisperBox = AddTextBox(col, y, "summonWhisperMsg", DEFAULT_WHISPER_MSG, "Whisper message", PLACEHOLDER_HELP, TEXTBOX_W - 52)
 	local whisperTest = CreateFrame("Button", nil, col, "UIPanelButtonTemplate")
@@ -3940,9 +4321,6 @@ local function BuildOptionsEntry()
 		ns.SyncConfig()
 	end)
 	page:SetScript("OnSizeChanged", function() if page:IsShown() then Fit() end end)
-	page:SetScript("OnHide", function()
-		if alertPreview then alertPreview = false Refresh() end
-	end)
 
 	local category = Settings.RegisterCanvasLayoutCategory(page, "Shard Grid")
 	Settings.RegisterAddOnCategory(category)
@@ -4312,6 +4690,9 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2)
 		SafeRegister("PLAYER_EQUIPMENT_CHANGED")
 		ns.SetStage("alert")
 		RestoreAlertPosition()
+		ns.RestoreStoneAlertPosition()
+		ns.RestoreSayPromptPosition()
+		ns.RestoreHealthAlertPosition()
 		ApplyLock()
 		ns.SetStage("minimap button")
 		ns.UpdateMinimapButton()
@@ -4328,6 +4709,9 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2)
 		ns.InitDB()
 		report["saved vars"] = "arrived late, adopted at " .. event
 		RestoreAlertPosition()
+		ns.RestoreStoneAlertPosition()
+		ns.RestoreSayPromptPosition()
+		ns.RestoreHealthAlertPosition()
 		ApplyLock()
 		ns.UpdateMinimapButton()
 	end
@@ -4506,8 +4890,14 @@ SlashCmdList["SHARDGRID"] = function(msg)
 	elseif cmd == "reset" then
 		for k, v in pairs(DEFAULTS) do db[k] = v end
 		db.x, db.y, db.alertX, db.alertY, db.alertSoundCustom = nil, nil, nil, nil, nil
+		db.stoneAlertX, db.stoneAlertY = nil, nil
+		db.healthAlertX, db.healthAlertY = nil, nil
+		db.sayPromptX, db.sayPromptY = nil, nil
 		db.v11 = true
 		RestoreAlertPosition()
+		ns.RestoreStoneAlertPosition()
+		ns.RestoreSayPromptPosition()
+		ns.RestoreHealthAlertPosition()
 		Print("Reset.")
 	elseif cmd == "debug" then
 		Debug()

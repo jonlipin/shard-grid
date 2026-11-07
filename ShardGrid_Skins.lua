@@ -153,6 +153,14 @@ local function SkinAll(_, style)
 		Fonts(alert.count, alert.label)
 	end)
 
+	Try("soulstone and healthstone alert icons", function()
+		for _, alert in ipairs({ ShardGridStoneAlert, ShardGridHealthAlert }) do
+			DarkSlot(alert.bg)
+			S().SquareIcon(alert.icon, alert)
+			Fonts(alert.label)
+		end
+	end)
+
 	OutOfCombat("summon button", function()
 		local button = ShardGridSummonAction
 		if not button then return end
