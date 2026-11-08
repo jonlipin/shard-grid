@@ -1,16 +1,12 @@
-## 1.7.0 - 2026-11-07
+## 1.8.0 - 2026-11-08
 
 ### New
-- **Soulstone ready alert.** A purple icon pulses while a Soulstone in your bags is off cooldown, so it isn't left unused. It goes away when you use the stone and comes back when the cooldown ends. Turn it off with "Alert when my Soulstone is ready to use" in the Soulstone tracker options.
-- **No Healthstone alert.** A green icon pulses while there is no Healthstone in your bags, once you know Create Healthstone. Turn it off with "Alert when I have no Healthstone" in the Healthstones options.
-- Both new icons work like the low shard alert: drag them where you want, they use the alert icon size, and they take the Dark and EllesmereUI looks.
-- **Asking for clickers when nobody helps.** If you are still channeling Ritual of Summoning 15 seconds after starting it, Shard Grid asks in /say for people to click the portal, once per summon. Inside an instance it goes at once. Outside one, the game only lets addons use /say during a key press or click, so it goes on your next key press, or when you click the small "Ask for clickers in /say" button that pops up. Options: "Ask in /say when nobody helps" and "Ask after (seconds)", 5 to 60.
-- **"Also say it in /say"**: posts the party / raid summon message in /say as well. Off by default.
+- **Make a Soulstone alert.** The Soulstone alert now also shows when you have no Soulstone at all and the 30 minute cooldown is over, as "Make a Soulstone". Before, it only showed for a stone already in your bags.
+- **Click the alerts to make the stone.** Clicking "Make a Soulstone" casts Create Soulstone (the best rank you know), and clicking "No Healthstone" casts Create Healthstone.
+- **Click again to use the Soulstone.** Once the stone is in your bags the alert turns into "Soulstone ready", and clicking it uses the stone on your target.
+- **Healthstone button on the shard window.** A Healthstone on the left of the Soul Shards title bar. Click it to post "Healthstones! Trade me and I'll give you one." in raid, battleground or party chat. Turn it off with "Healthstone button on the shard window" in the Healthstones options.
 
 ### Changes
-- The whisper and the party / raid message now go out however you start a summon: a name in the list, the floating summon button, or Ritual of Summoning cast from your spellbook, action bar, a macro or a click-casting addon.
-- "Show alert now" stays on after you close the options, so you can place the alert icons with the options out of the way. Untick it when they are placed; a reload turns it off too.
-- `/shards debug` has new lines: "last summon cast", "summon help asked", "soulstone ready" and "healthstone".
-
-### Fixes
-- A Ritual of Summoning cast outside the summon list could send nothing when the game hid the target's name from addons. Shard Grid now checks for that first, and uses your current target instead when they are in your group.
+- The Soulstone cooldown is now worked out from the game's item cooldown, the time you last used a stone (kept across reloads), and your stone on somebody in the group.
+- While "Show alert now" is ticked, the alerts can't be clicked, so dragging one into place never casts anything. To move an alert, tick it, drag, and untick it.
+- In combat the game doesn't let addons add or remove a clickable button. An alert that first appears in combat can be clicked once combat ends.

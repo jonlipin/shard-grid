@@ -26,7 +26,7 @@ Drag the grid where you want it, and drag the grip in its corner to set how many
 
 **Not running dry.** Turn on the low shard alert and pick a threshold. A separate icon appears and pulses whenever you drop below it, so you find out at the bank rather than at a summoning stone. Drag it wherever you want, and tick "Show alert now" to place it without waiting to run low.
 
-**Not forgetting your stones.** Two more icons work the same way: a purple one while a Soulstone in your bags is off cooldown and waiting to be used, and a green one while you have no Healthstone in your bags.
+**Not forgetting your stones.** Two more icons work the same way: a purple one while your Soulstone is going unused (one in your bags off cooldown, or none made and the cooldown over), and a green one while you have no Healthstone in your bags. Click them to make the stone, and click the Soulstone one again to use it on your target.
 
 **Clearing the clutter.** Tick "Auto-delete extra shards" and say how many you want beyond your soul bag's capacity. Anything over that is destroyed, and only ever from your ordinary bags. The allowance sits at its maximum while auto-delete is off, so switching it on never deletes anything by surprise: turn it on first, then bring the slider down. Loose shards are moved into empty soul bag slots first, so only shards that truly don't fit are deleted. The game only lets an addon destroy an item during a real button press, so extras go one at a time as you play: on a key press, an action bar button (key, mouse click or controller), a jump, or a click on the grid. Clicking or running with the mouse in the game world doesn't count. The options list every condition.
 
@@ -40,7 +40,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 
 **Choosing a look.** The Look section of the options has a Window style button: Automatic (EllesmereUI's look when it is installed, otherwise Blizzard), Blizzard, or Dark, a flat dark style that needs no other addon. With Dark chosen, a slider sets how much of the world shows through its windows. Switching away from a style takes a reload, and Shard Grid offers one.
 
-**Healthstones.** With the trade options on, opening a trade drops a Healthstone straight into it, and offers a button to conjure one when you have none. You still press Trade yourself.
+**Healthstones.** With the trade options on, opening a trade drops a Healthstone straight into it, and offers a button to conjure one when you have none. You still press Trade yourself. The Healthstone on the shard window's title bar tells your raid, battleground or party to come and trade you.
 
 ## Commands
 

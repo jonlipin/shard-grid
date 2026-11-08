@@ -116,7 +116,8 @@ end
 
 local function SkinAll(_, style)
 	Try("grid window", function()
-		SkinWindow(ShardGridFrame, ns.cog, ns.grip)
+		SkinWindow(ShardGridFrame, ns.cog, ns.grip, ns.hsAnnounce)
+		if ns.hsAnnounce then S().SquareIcon(ns.hsAnnounce.icon, ns.hsAnnounce) end
 		Fonts(ns.gridEmpty)
 	end)
 

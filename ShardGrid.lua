@@ -76,6 +76,7 @@ local DEFAULTS = {
 	tradeHealthstone = false,
 	tradeGroupOnly = true,
 	tradeCreate = true,   -- offer a Create Healthstone button on the trade window
+	hsAnnounceBtn = true, -- a button on the grid's title bar that offers Healthstones to the group
 	minimapShown = true,
 	minimapAngle = 215, -- degrees around the minimap
 	style = "auto",     -- window style: "auto" (EllesmereUI when it is running), "blizzard" or "dark"
@@ -799,7 +800,8 @@ end
 
 -- ------------------------------------------------------------------
 -- Soulstone ready and No Healthstone: two more movable icons, like the low-shard alert.
--- Soulstone ready shows while a Soulstone in your bags is off cooldown, so it isn't left unused.
+-- Soulstone ready shows while a Soulstone in your bags is off cooldown, so it isn't left unused,
+-- and Make a Soulstone while you have none and the 30 minute cooldown is over.
 -- Using a stone starts a 30 minute cooldown, as long as the stone lasts, so a ready stone in your
 -- bags means none of yours is on anybody. No Healthstone shows while you know Create Healthstone
 -- and have no Healthstone in your bags.
@@ -856,14 +858,18 @@ do
 			f.pulse = ag
 		end)
 
-		function f.RestorePosition()
-			f:ClearAllPoints()
+		local function Place(frame)
+			frame:ClearAllPoints()
 			local x, y = db[key .. "X"], db[key .. "Y"]
 			if x and y then
-				f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+				frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
 			else
-				f:SetPoint("CENTER", UIParent, "CENTER", offsetX, 120) -- beside the low-shard alert
+				frame:SetPoint("CENTER", UIParent, "CENTER", offsetX, 120) -- beside the low-shard alert
 			end
+		end
+		function f.RestorePosition()
+			Place(f)
+			if f.cast and not InCombatLockdown() then Place(f.cast) end
 		end
 		f:SetScript("OnDragStart", function(self)
 			if not db.locked then self:StartMoving() end
@@ -877,7 +883,54 @@ do
 		f:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 		-- Shown while `on`, or as a preview while "Show alert now" is ticked.
+		-- Clicking makes the missing item: a secure button over the icon casts f.castSpell, or
+		-- uses f.castItem (an "item:<id>" string) once the item exists.
+		-- It is a frame of its own, neither a child of the icon nor anchored to it, so the icon
+		-- can still come and go in combat. The button itself only changes out of combat. While
+		-- "Show alert now" is ticked it steps aside, so dragging the icon never casts anything.
+		local okCast, cast = pcall(CreateFrame, "Button", frameName .. "Cast", UIParent, "SecureActionButtonTemplate")
+		if okCast and cast then
+			cast:SetFrameStrata("MEDIUM")
+			cast:SetFrameLevel(f:GetFrameLevel() + 20)
+			cast:RegisterForClicks("AnyUp", "AnyDown")
+			cast:Hide()
+			cast:SetScript("OnEnter", function()
+				local enter = f:GetScript("OnEnter")
+				if enter then enter(f) end
+			end)
+			cast:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			cast:SetScript("OnMouseDown", function() f.icon:SetVertexColor(0.6, 0.6, 0.6) end)
+			cast:SetScript("OnMouseUp", function() f.icon:SetVertexColor(1, 1, 1) end)
+			f.cast = cast
+		end
+		report[key .. " click"] = f.cast and "ready" or "no secure button on this client"
+
+		local function SyncCast(on)
+			local b = f.cast
+			if not b then return end
+			if InCombatLockdown() then f.castDirty = true return end
+			f.castDirty = nil
+			local want = on and (f.castSpell or f.castItem) and not alertPreview
+			if want then
+				local size = db.alertSize
+				b:SetSize(size, size)
+				if f.castItem then
+					b:SetAttribute("type", "item")
+					b:SetAttribute("item", f.castItem)
+					b:SetAttribute("spell", nil)
+				else
+					b:SetAttribute("type", "spell")
+					b:SetAttribute("spell", f.castSpell)
+					b:SetAttribute("item", nil)
+				end
+				Place(b)
+			end
+			b:SetShown(want and true or false)
+		end
+
+		-- Shown while `on`, or as a preview while "Show alert now" is ticked.
 		function f.Set(on)
+			SyncCast(on)
 			if not (on or alertPreview) then
 				if f.pulse then f.pulse:Stop() end
 				f:Hide()
@@ -900,11 +953,24 @@ do
 	ns.RestoreStoneAlertPosition = sa.RestorePosition
 	sa:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		if self.make then
+			GameTooltip:SetText("Make a Soulstone", 0.75, 0.55, 1)
+			GameTooltip:AddLine("You have no Soulstone and its cooldown is over. Make one and put it on somebody so it isn't wasted.", 1, 1, 1, true)
+			GameTooltip:AddLine(self.castSpell and "Click to cast Create Soulstone." or "Cast Create Soulstone to make one.", 0.3, 1, 0.35, true)
+			GameTooltip:AddLine("To move it, tick Show alert now in /shards.", 0.7, 0.7, 0.7, true)
+			GameTooltip:Show()
+			return
+		end
 		GameTooltip:SetText("Soulstone ready", 0.75, 0.55, 1)
 		local name = self.itemID and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(self.itemID)) or (GetItemInfo and GetItemInfo(self.itemID)))
 		if type(name) ~= "string" or Hidden(name) then name = "A Soulstone" end
 		GameTooltip:AddLine(name .. " is in your bags and off cooldown. Target someone and use it so it isn't wasted.", 1, 1, 1, true)
-		GameTooltip:AddLine("Drag to move; /shards for options.", 0.7, 0.7, 0.7, true)
+		if self.castItem then
+			GameTooltip:AddLine("Click to use it on your target.", 0.3, 1, 0.35, true)
+			GameTooltip:AddLine("To move it, tick Show alert now in /shards.", 0.7, 0.7, 0.7, true)
+		else
+			GameTooltip:AddLine("Drag to move; /shards for options.", 0.7, 0.7, 0.7, true)
+		end
 		GameTooltip:Show()
 	end)
 
@@ -934,35 +1000,113 @@ do
 		end
 	end
 
-	local wake = 0 -- only the latest scheduled re-check counts
+	-- Make a Soulstone: no stone in your bags, but the cooldown is over, so one could be on somebody.
+	local CREATE_SOULSTONE = { 693, 20752, 20755, 20756, 20757, 27238 } -- every rank
+	local STONE_USE = { 20707, 20762, 20763, 20764, 20765, 27239 } -- Soulstone Resurrection, every rank
+	local STONE_COOLDOWN = 1800
+	local STONE_ICON = "Interface\\Icons\\Spell_Shadow_SoulGem"
+
+	-- The best rank of Create Soulstone you know, or nil.
+	local function KnownCreateSoulstone()
+		local fn = IsPlayerSpell or IsSpellKnown
+		if not fn then return nil end
+		for i = #CREATE_SOULSTONE, 1, -1 do
+			local ok, known = pcall(fn, CREATE_SOULSTONE[i])
+			if ok and known and not Hidden(known) then return CREATE_SOULSTONE[i] end
+		end
+	end
+	local function KnowsCreateSoulstone() return KnownCreateSoulstone() ~= nil end
+
+	-- Using a stone is remembered in real time, so the cooldown survives a reload.
+	function ns.NoteStoneUsed(spellID)
+		if spellID == nil or Hidden(spellID) then return false end
+		for _, id in ipairs(STONE_USE) do
+			if spellID == id then
+				if db and time then db.stoneUsedAt = time() end
+				return true
+			end
+		end
+		return false
+	end
+
+	-- When the stone cooldown ends (GetTime), from anything that knows: the game's item
+	-- cooldown, the stone you last used, and your stone on somebody in the group. Nil when over.
+	function ns.StoneCooldownEnds()
+		local now, ends = GetTime(), nil
+		local function Later(t) if t and t > now and t > (ends or 0) then ends = t end end
+		local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+		if fn then
+			for _, id in ipairs(STONE_ITEMS) do
+				local ok, start, duration = pcall(fn, id)
+				if ok and type(start) == "number" and type(duration) == "number" and not Hidden(start) and not Hidden(duration)
+					and start > 0 and duration > 1.5 then
+					Later(start + duration)
+				end
+			end
+		end
+		if db and db.stoneUsedAt and time then Later(now + (db.stoneUsedAt + STONE_COOLDOWN - time())) end
+		if ns.MyStoneExpires then Later(ns.MyStoneExpires()) end
+		return ends
+	end
+
+	local wake, wakeAt = 0, nil -- only the latest scheduled re-check counts
+	local function WakeAt(readyAt)
+		if not readyAt or (wakeAt and math.abs(wakeAt - readyAt) < 1) then return end
+		wakeAt = readyAt
+		wake = wake + 1
+		local mine = wake
+		if C_Timer and C_Timer.After then
+			C_Timer.After(math.max(0.1, readyAt - GetTime() + 0.1), function()
+				if mine == wake then wakeAt = nil ns.UpdateStoneAlert() end
+			end)
+		end
+	end
+
 	function ns.UpdateStoneAlert()
 		if not db then return end
-		local id, ready, readyAt
-		if select(2, UnitClass("player")) == "WARLOCK" and db.stoneAlert then id, ready, readyAt = ns.ReadyStone() end
+		local warlock = select(2, UnitClass("player")) == "WARLOCK"
+		local id, ready, readyAt, show, make
+		if warlock and db.stoneAlert then id, ready, readyAt = ns.ReadyStone() end
 		if not db.stoneAlert then
 			report["soulstone ready"] = "alert off"
-		elseif not id then
-			report["soulstone ready"] = "no Soulstone in your bags"
-		elseif ready == nil then
+		elseif not warlock then
+			report["soulstone ready"] = "not a warlock"
+		elseif id and ready == nil then
 			report["soulstone ready"] = "can't read the stone's cooldown"
-		elseif ready then
-			report["soulstone ready"] = "yes (item " .. id .. ")"
+		elseif id then
+			local ends = ns.StoneCooldownEnds()
+			if ready and not ends then
+				show = true
+				report["soulstone ready"] = "yes (item " .. id .. ")"
+			else
+				ends = ends or readyAt
+				report["soulstone ready"] = ("on cooldown, ready in %ds"):format(math.max(0, math.floor((ends or 0) - GetTime())))
+				WakeAt(ends)
+			end
+		elseif not KnowsCreateSoulstone() then
+			report["soulstone ready"] = "no Soulstone, Create Soulstone not learned yet"
 		else
-			report["soulstone ready"] = ("on cooldown, ready in %ds"):format(math.max(0, math.floor(readyAt - GetTime())))
-			wake = wake + 1
-			local mine = wake
-			if C_Timer and C_Timer.After then
-				C_Timer.After(math.max(0.1, readyAt - GetTime() + 0.1), function()
-					if mine == wake then ns.UpdateStoneAlert() end
-				end)
+			local ends = ns.StoneCooldownEnds()
+			if ends then
+				report["soulstone ready"] = ("none made, cooldown ready in %ds"):format(math.max(0, math.floor(ends - GetTime())))
+				WakeAt(ends)
+			else
+				show, make = true, true
+				report["soulstone ready"] = "none made, cooldown over: make one"
 			end
 		end
 		sa.itemID = id
+		sa.make = make
+		sa.castSpell = make and KnownCreateSoulstone() or nil
+		sa.castItem = (show and not make and id) and ("item:" .. id) or nil
+		sa.labelText = make and "Make a Soulstone" or "Soulstone ready"
+		local icon = STONE_ICON
 		if id then
-			local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)) or (GetItemIcon and GetItemIcon(id))
-			if icon and not Hidden(icon) then sa.icon:SetTexture(icon) end
+			icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)) or (GetItemIcon and GetItemIcon(id)) or icon
+			if Hidden(icon) then icon = STONE_ICON end
 		end
-		sa.Set(id and ready)
+		sa.icon:SetTexture(icon)
+		sa.Set(show)
 	end
 
 	-- ---- No Healthstone ----
@@ -972,8 +1116,9 @@ do
 	ha:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:SetText("No Healthstone", 0.3, 1, 0.35)
-		GameTooltip:AddLine("There is no Healthstone in your bags. Cast Create Healthstone to make one.", 1, 1, 1, true)
-		GameTooltip:AddLine("Drag to move; /shards for options.", 0.7, 0.7, 0.7, true)
+		GameTooltip:AddLine("There is no Healthstone in your bags.", 1, 1, 1, true)
+		GameTooltip:AddLine(self.castSpell and "Click to cast Create Healthstone." or "Cast Create Healthstone to make one.", 0.3, 1, 0.35, true)
+		GameTooltip:AddLine(self.castSpell and "To move it, tick Show alert now in /shards." or "Drag to move; /shards for options.", 0.7, 0.7, 0.7, true)
 		GameTooltip:Show()
 	end)
 
@@ -1001,6 +1146,8 @@ do
 			missing = true
 			report["healthstone"] = "none in your bags"
 		end
+		ha.castSpell = nil
+		if missing and ns.CreateHealthstoneName then ha.castSpell = select(2, ns.CreateHealthstoneName()) end
 		ha.Set(missing)
 	end
 
@@ -1008,7 +1155,12 @@ do
 	pcall(ev.RegisterEvent, ev, "BAG_UPDATE_COOLDOWN")
 	pcall(ev.RegisterEvent, ev, "PLAYER_ENTERING_WORLD")
 	pcall(ev.RegisterEvent, ev, "SPELLS_CHANGED")
-	ev:SetScript("OnEvent", function()
+	pcall(ev.RegisterEvent, ev, "PLAYER_REGEN_ENABLED") -- the click buttons catch up
+	if ev.RegisterUnitEvent then pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player") end
+	ev:SetScript("OnEvent", function(_, event, unit, _, spellID)
+		if event == "UNIT_SPELLCAST_SUCCEEDED" then
+			if unit ~= "player" or not ns.NoteStoneUsed(spellID) then return end
+		end
 		ns.UpdateStoneAlert()
 		ns.UpdateHealthAlert()
 	end)
@@ -1609,6 +1761,12 @@ function Refresh()
 		frame.sgRaised = true
 		RaiseWithinParent(frame.sgCog, frame)
 		if frame.sgGrip then RaiseWithinParent(frame.sgGrip, frame) end
+		if ns.hsAnnounce then RaiseWithinParent(ns.hsAnnounce, frame) end
+	end
+	if ns.hsAnnounce then
+		local h = math.min(16 / fit, 22)
+		ns.hsAnnounce:SetSize(h, h)
+		ns.hsAnnounce:SetShown(db.hsAnnounceBtn and true or false)
 	end
 	local cog = frame.sgCog
 	if cog then
@@ -2428,6 +2586,7 @@ local function CreateHealthstoneName()
 		end
 	end
 end
+ns.CreateHealthstoneName = CreateHealthstoneName
 
 local function EnsureMakeButton()
 	if makeButton or InCombatLockdown() or not TradeFrame then return end
@@ -2925,6 +3084,15 @@ local function ScanStones()
 	return order
 end
 
+-- When the Soulstone you put on somebody in the group runs out (GetTime), or nil.
+function ns.MyStoneExpires()
+	local me, latest = UnitName("player"), nil
+	for _, st in ipairs(stones) do
+		if st.caster and st.caster == me and (st.expires or 0) > (latest or 0) then latest = st.expires end
+	end
+	return latest
+end
+
 local stoneWin = CreatePanel("ShardGridStones", true)
 ns.CloseByHiding(stoneWin, stoneWin.sgClose)
 stoneWin:SetFrameStrata("MEDIUM")
@@ -3324,6 +3492,7 @@ function ns.UpdateStones(rescan)
 		local previous = stones
 		stones = ScanStones()
 		AnnounceNewStones(previous)
+		if ns.UpdateStoneAlert then ns.UpdateStoneAlert() end
 	end
 	local grouped = IsInGroup and IsInGroup()
 	if not db.stoneEnabled or (db.stoneSoloHide and not grouped and #stones == 0) then
@@ -4018,6 +4187,11 @@ local function BuildConfig()
 		function(v) db.tradeCreate = v ns.UpdateMakeButton() end,
 		"When a trade opens and you have no Healthstone, a button appears on the trade window to cast Create Healthstone. It uses a Soul Shard, and goes away once the stone is made.")
 	y = y - 26
+	AddCheck(col, y, "Healthstone button on the shard window",
+		function() return db.hsAnnounceBtn end,
+		function(v) db.hsAnnounceBtn = v Refresh() end,
+		"A Healthstone on the left of the Soul Shards title bar. Click it to tell your raid, battleground or party to trade you for a Healthstone.")
+	y = y - 26
 	AddCheck(col, y, "Alert when I have no Healthstone",
 		function() return db.healthAlert end,
 		function(v) db.healthAlert = v ns.UpdateHealthAlert() end,
@@ -4048,7 +4222,7 @@ local function BuildConfig()
 	AddCheck(col, y, "Alert when my Soulstone is ready to use",
 		function() return db.stoneAlert end,
 		function(v) db.stoneAlert = v ns.UpdateStoneAlert() end,
-		"A separate, movable icon that pulses while a Soulstone in your bags is off cooldown, so it isn't left unused. It uses the alert icon size, and Show alert now shows it too, for positioning.")
+		"A separate, movable icon that pulses while your Soulstone isn't being used: \"Soulstone ready\" while one in your bags is off cooldown, and \"Make a Soulstone\" while you have none and the 30 minute cooldown is over. It uses the alert icon size, and Show alert now shows it too, for positioning.")
 	y = y - 28
 	local showStones = CreateFrame("Button", nil, col, "UIPanelButtonTemplate")
 	showStones:SetSize(170, 22)
@@ -4359,6 +4533,51 @@ function ToggleConfig()
 	end
 	config:SetShown(not config:IsShown())
 	if config:IsShown() and config.Raise then config:Raise() end
+end
+
+ns.SetStage("healthstone announce button")
+-- A Healthstone on the left of the grid's title bar: one click tells the raid, battleground
+-- or party to trade you for a Healthstone. The trade options above then do the giving.
+do
+	local b = CreateFrame("Button", nil, frame)
+	ns.hsAnnounce = b
+	b:SetSize(16, 16)
+	b:SetPoint("TOPLEFT", 5, -4)
+	b:RegisterForClicks("LeftButtonUp")
+	b.icon = b:CreateTexture(nil, "ARTWORK")
+	b.icon:SetAllPoints()
+	b.icon:SetTexture("Interface\\Icons\\INV_Stone_04")
+	b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+	RaiseWithinParent(b, frame)
+
+	local MESSAGE = "Healthstones! Trade me and I'll give you one."
+	local last = 0
+	b:SetScript("OnMouseDown", function(self) self.icon:SetVertexColor(0.6, 0.6, 0.6) end)
+	b:SetScript("OnMouseUp", function(self) self.icon:SetVertexColor(1, 1, 1) end)
+	b:SetScript("OnClick", function()
+		local channel = GroupChannel()
+		if not channel then
+			Print("You're not in a party, raid or battleground, so there is nobody to tell.")
+			return
+		end
+		local now = GetTime()
+		if now - last < 5 then return end -- a double click doesn't post it twice
+		last = now
+		SendChat(MESSAGE, channel)
+		report["healthstone announce"] = channel .. " at " .. math.floor(now)
+	end)
+	b:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Offer Healthstones", 1, 1, 1)
+		GameTooltip:AddLine("Click to say in raid, battleground or party chat:", nil, nil, nil, true)
+		GameTooltip:AddLine("\"" .. MESSAGE .. "\"", 0.3, 1, 0.35, true)
+		if not (db and db.tradeHealthstone) then
+			GameTooltip:AddLine("Tip: turn on \"Offer a Healthstone when a trade opens\" in /shards and the stone goes into each trade for you.", 0.7, 0.7, 0.7, true)
+		end
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 ns.SetStage("cog button")
