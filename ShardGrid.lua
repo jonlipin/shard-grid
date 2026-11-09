@@ -1977,17 +1977,34 @@ local function ShortName(name)
 	return name
 end
 
-local function FindGroupUnit(short)
+-- Whether a unit is the player a name from chat or a spell means. Chat gives the whole name
+-- ("Vanilla Gorillah" on WoW Forever, where everyone has a surname); UnitName gives the first
+-- name and the surname separately, so both the whole name and the first name are compared.
+function ns.UnitIsNamed(unit, short)
+	if type(short) ~= "string" or short == "" then return false end
 	local base = short:match("^[^-]+") or short
+	local full = ns.FullUnitName and ns.FullUnitName(unit)
+	if full and (full == short or full == base) then return true end
+	local ok, n = pcall(UnitName, unit)
+	if not ok or IsSecret(n) then return false end
+	return n == short or n == base
+end
+
+local function FindGroupUnit(short)
 	local prefix, count = "party", 4
 	if IsInRaid and IsInRaid() then prefix, count = "raid", 40 end
 	for i = 1, count do
 		local unit = prefix .. i
-		if UnitExists(unit) then
-			local n = UnitName(unit)
-			if n == short or n == base then return unit end
-		end
+		if UnitExists(unit) and ns.UnitIsNamed(unit, short) then return unit end
 	end
+end
+
+-- Whether you can invite people yourself: not in a group, its leader, or a raid assistant.
+function ns.CanInvite()
+	if not (IsInGroup and IsInGroup()) then return true end
+	if UnitIsGroupLeader and UnitIsGroupLeader("player") then return true end
+	if IsInRaid and IsInRaid() and UnitIsGroupAssistant and UnitIsGroupAssistant("player") then return true end
+	return false
 end
 
 local function GroupChannel()
@@ -2257,7 +2274,10 @@ local function GetSummonRow(i)
 	row.nameText:SetJustifyH("LEFT")
 	row.nameText:SetWordWrap(false)
 
-	-- Invite button for people who whispered from outside the group.
+	-- Invite button for people who whispered from outside the group. When you can't invite
+	-- (in a group, not its leader or a raid assistant) it suggests the invite to the leader
+	-- instead, the way the game's own Suggest Invite does: the same call, which the server
+	-- passes on to the leader.
 	row.invite = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
 	row.invite:SetSize(52, 18)
 	row.invite:SetPoint("RIGHT", row.ageText, "LEFT", -6, 0)
@@ -2265,15 +2285,27 @@ local function GetSummonRow(i)
 	row.invite:SetScript("OnClick", function()
 		if not row.req then return end
 		if row.req.test then Print("That's a test entry - no invite was sent.") return end
+		local suggest = not ns.CanInvite()
+		if suggest and C_PartyInfo and C_PartyInfo.IsPartyFull and C_PartyInfo.IsPartyFull() then
+			Print("Your group is full, so there is no room to suggest " .. row.req.short .. ".")
+			return
+		end
 		local invite = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
 		local ok, err = pcall(invite, row.req.name)
-		report["invite"] = ok and "sent" or ("error: " .. tostring(err))
-		if ok then Print("Invited " .. row.req.short .. ".") end
+		report["invite"] = ok and (suggest and "suggested to the leader" or "sent") or ("error: " .. tostring(err))
+		if ok then
+			Print(suggest and ("Suggested inviting " .. row.req.short .. " to your group leader.") or ("Invited " .. row.req.short .. "."))
+		end
 	end)
 	row.invite:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText("Invite to group", 1, 1, 1)
-		GameTooltip:AddLine("They whispered from outside your group. Invite them, then click their name to summon.", nil, nil, nil, true)
+		if ns.CanInvite() then
+			GameTooltip:SetText("Invite to group", 1, 1, 1)
+			GameTooltip:AddLine("They whispered from outside your group. Invite them, then click their name to summon.", nil, nil, nil, true)
+		else
+			GameTooltip:SetText("Suggest invite", 1, 1, 1)
+			GameTooltip:AddLine("They whispered from outside your group, and you aren't the leader. This asks your group leader to invite them; click their name to summon once they join.", nil, nil, nil, true)
+		end
 		GameTooltip:Show()
 	end)
 	row.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2328,6 +2360,12 @@ local function PaintSummonRow(row, req)
 	local className = req.class and ((LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[req.class]) or req.class) or ""
 	local needsInvite = not req.unit
 	row.invite:SetShown(needsInvite)
+	if needsInvite then
+		row.invite:SetText(ns.CanInvite() and "Invite" or "Suggest")
+		local fs = row.invite.GetFontString and row.invite:GetFontString()
+		local w = fs and fs.GetStringWidth and fs:GetStringWidth()
+		row.invite:SetWidth(math.max(52, (type(w) == "number" and w or 0) + 16))
+	end
 	row.classText:ClearAllPoints()
 	row.classText:SetPoint("LEFT", row.nameText, "RIGHT", 6, 0)
 	row.classText:SetPoint("RIGHT", needsInvite and row.invite or row.ageText, "LEFT", -6, 0)
@@ -2680,7 +2718,7 @@ sumEvents:SetScript("OnEvent", function(_, event, text, sender, ...)
 		if not db.summonEnabled then return end
 		if select(2, UnitClass("player")) ~= "WARLOCK" then return end
 		if IsSecret(text) or IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
-		if ShortName(sender) == UnitName("player") then return end
+		if ns.UnitIsNamed("player", ShortName(sender)) then return end
 		if IsSummonRequest(text) then
 			if event == "CHAT_MSG_WHISPER" and not db.summonWhisperAny and not FindGroupUnit(ShortName(sender)) then
 				return -- stranger whispering; they need to be in the group to be summoned anyway
@@ -2696,6 +2734,41 @@ end)
 -- game can hide this event's values from addons (they arrive as secret values, which can't
 -- even be compared), so each one is checked first. With the target's name hidden, the
 -- player you have targeted counts, if they are in your group. /shards debug shows the result.
+-- A unit's whole name. On WoW Forever every character has a first name and a surname, and
+-- UnitName gives them as two values; a whisper needs both, joined the way the game joins them
+-- (NameUtil.FormatUnitNameForDisplay). Elsewhere the second value is a realm.
+function ns.FullUnitName(unit)
+	if not unit then return end
+	local ok, name, second = pcall(UnitName, unit)
+	if not ok or IsSecret(name) or type(name) ~= "string" or name == "" then return end
+	if IsSecret(second) or type(second) ~= "string" or second == "" then return name end
+	local consts = Constants and Constants.CharacterNameSeparatorConsts
+	if consts then
+		return name .. (consts.CHARACTERNAME_SURNAME_SEPARATOR or " ") .. second
+	end
+	return name .. "-" .. second
+end
+
+-- The spell's target can come as a first name only. Find that player in the group (or your
+-- target or mouseover) and return the whole name; the name as given when nobody matches.
+function ns.WholeName(name)
+	if type(name) ~= "string" or name == "" then return name end
+	local units = { "target", "mouseover", "focus" }
+	if IsInRaid and IsInRaid() then
+		for i = 1, 40 do units[#units + 1] = "raid" .. i end
+	else
+		for i = 1, 4 do units[#units + 1] = "party" .. i end
+	end
+	for _, unit in ipairs(units) do
+		if UnitExists(unit) then
+			local full = ns.FullUnitName(unit)
+			local ok, first = pcall(UnitName, unit)
+			if full and (full == name or (ok and not IsSecret(first) and first == name)) then return full end
+		end
+	end
+	return name
+end
+
 function ns.OnSummonCastSent(unit, target, spellID)
 	if IsSecret(unit) or unit ~= "player" then return end
 	if IsSecret(spellID) then
@@ -2707,13 +2780,14 @@ function ns.OnSummonCastSent(unit, target, spellID)
 	if not IsSecret(target) and type(target) == "string" and target ~= "" then
 		name, how = target, "the spell's target"
 	else
-		local ok, t = pcall(UnitName, "target")
+		local t = ns.FullUnitName("target")
 		local inGroup = (UnitInParty and UnitInParty("target")) or (UnitInRaid and UnitInRaid("target"))
-		if ok and not IsSecret(t) and type(t) == "string" and t ~= "" and inGroup and not UnitIsUnit("target", "player") then
+		if t and inGroup and not UnitIsUnit("target", "player") then
 			name, how = t, "your target (the game hid the spell's target)"
 		end
 	end
 	local stamp = date and date("%H:%M:%S") or ""
+	if name then name = ns.WholeName(name) end
 	if not name then
 		if ns.NoteSummonCast then ns.NoteSummonCast(nil) end
 		report["last summon cast"] = stamp .. " no name to send to (the game hid the spell's target and your target isn't in your group)"
@@ -2907,11 +2981,7 @@ local function ManualUnit()
 end
 
 local function ManualName(unit)
-	if not unit then return end
-	local name, realm = UnitName(unit)
-	if not name then return end
-	if realm and realm ~= "" then return name .. "-" .. realm end
-	return name
+	return ns.FullUnitName(unit)
 end
 
 msBtn:SetScript("PostClick", function(_, _, down)

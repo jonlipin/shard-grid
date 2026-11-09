@@ -1,12 +1,10 @@
-## 1.8.0 - 2026-11-08
+## 1.8.1 - 2026-11-08
 
-### New
-- **Make a Soulstone alert.** The Soulstone alert now also shows when you have no Soulstone at all and the 30 minute cooldown is over, as "Make a Soulstone". Before, it only showed for a stone already in your bags.
-- **Click the alerts to make the stone.** Clicking "Make a Soulstone" casts Create Soulstone (the best rank you know), and clicking "No Healthstone" casts Create Healthstone.
-- **Click again to use the Soulstone.** Once the stone is in your bags the alert turns into "Soulstone ready", and clicking it uses the stone on your target.
-- **Healthstone button on the shard window.** A Healthstone on the left of the Soul Shards title bar. Click it to post "Healthstones! Trade me and I'll give you one." in raid, battleground or party chat. Turn it off with "Healthstone button on the shard window" in the Healthstones options.
+### Fixes
+- **Whispers reach the whole name.** On WoW Forever everyone has a first name and a surname, and a summon cast with the spell, the floating button or a click-casting addon whispered the first name only ("No player named 'Vanilla' is currently playing"). Shard Grid now finds the player and whispers their whole name, and the group message names them in full too.
+- **The summon list finds people in your group.** Requests compared the whole name from chat with the first name the game gives for group members, so everyone showed "not grouped" with an Invite button, right-click summoning had no unit to cast at, and requests didn't clear when the person arrived. All of these work again.
+- Your own chat lines are no longer taken as summon requests.
+- The floating summon button's tooltip and the Soulstone tracker show whole names.
 
 ### Changes
-- The Soulstone cooldown is now worked out from the game's item cooldown, the time you last used a stone (kept across reloads), and your stone on somebody in the group.
-- While "Show alert now" is ticked, the alerts can't be clicked, so dragging one into place never casts anything. To move an alert, tick it, drag, and untick it.
-- In combat the game doesn't let addons add or remove a clickable button. An alert that first appears in combat can be clicked once combat ends.
+- **Invite or Suggest.** When you aren't the group leader (or a raid assistant), the button on a request reads "Suggest" and asks your leader to invite them, like the game's own Suggest Invite. With a full party it tells you instead of sending anything.
