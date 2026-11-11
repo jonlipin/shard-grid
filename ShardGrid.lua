@@ -75,6 +75,7 @@ local DEFAULTS = {
 	healthAlert = true,       -- an icon while you have no Healthstone in your bags
 	tradeHealthstone = false,
 	tradeGroupOnly = true,
+	tradeRepeatMinutes = 2, -- no second Healthstone for the same player within this long; 0 = no limit
 	tradeCreate = true,   -- offer a Create Healthstone button on the trade window
 	hsAnnounceBtn = true, -- a button on the grid's title bar that offers Healthstones to the group
 	minimapShown = true,
@@ -914,14 +915,23 @@ do
 			if want then
 				local size = db.alertSize
 				b:SetSize(size, size)
-				if f.castItem then
+				-- f.castMacro, when set, covers the item being made in combat, where this button
+				-- can't change: it uses the item if it exists, otherwise casts the spell.
+				if f.castMacro then
+					b:SetAttribute("type", "macro")
+					b:SetAttribute("macrotext", f.castMacro)
+					b:SetAttribute("item", nil)
+					b:SetAttribute("spell", nil)
+				elseif f.castItem then
 					b:SetAttribute("type", "item")
 					b:SetAttribute("item", f.castItem)
 					b:SetAttribute("spell", nil)
+					b:SetAttribute("macrotext", nil)
 				else
 					b:SetAttribute("type", "spell")
 					b:SetAttribute("spell", f.castSpell)
 					b:SetAttribute("item", nil)
+					b:SetAttribute("macrotext", nil)
 				end
 				Place(b)
 			end
@@ -947,7 +957,7 @@ do
 	end
 
 	-- ---- Soulstone ready ----
-	local STONE_ITEMS = { 16896, 16895, 16893, 16892, 5232 } -- Major, Greater, Soulstone, Lesser, Minor
+	local STONE_ITEMS = { 22116, 16896, 16895, 16893, 16892, 5232 } -- Master, Major, Greater, Soulstone, Lesser, Minor
 	local sa = NewAlertIcon("ShardGridStoneAlert", "stoneAlert", "Interface\\Icons\\INV_Misc_Orb_04", 0.6, 0.35, 1, "Soulstone ready", 70)
 	sa.label:SetTextColor(0.75, 0.55, 1)
 	ns.RestoreStoneAlertPosition = sa.RestorePosition
@@ -1002,6 +1012,8 @@ do
 
 	-- Make a Soulstone: no stone in your bags, but the cooldown is over, so one could be on somebody.
 	local CREATE_SOULSTONE = { 693, 20752, 20755, 20756, 20757, 27238 } -- every rank
+	-- The stone each rank makes, in the same order: Minor, Lesser, Soulstone, Greater, Major, Master.
+	local MADE_STONE = { 5232, 16892, 16893, 16895, 16896, 22116 }
 	local STONE_USE = { 20707, 20762, 20763, 20764, 20765, 27239 } -- Soulstone Resurrection, every rank
 	local STONE_COOLDOWN = 1800
 	local STONE_ICON = "Interface\\Icons\\Spell_Shadow_SoulGem"
@@ -1099,6 +1111,21 @@ do
 		sa.make = make
 		sa.castSpell = make and KnownCreateSoulstone() or nil
 		sa.castItem = (show and not make and id) and ("item:" .. id) or nil
+		-- Make state: a macro that uses the stone if there is one, then casts Create Soulstone.
+		-- Out of combat the button switches to "use" as soon as the stone exists; in combat it
+		-- can't change, so the macro is what lets the second click use a stone made in combat.
+		sa.castMacro = nil
+		if sa.castSpell then
+			local made
+			for i, spell in ipairs(CREATE_SOULSTONE) do
+				if spell == sa.castSpell then made = MADE_STONE[i] end
+			end
+			local name = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(sa.castSpell))
+				or (GetSpellInfo and GetSpellInfo(sa.castSpell))
+			if made and type(name) == "string" and name ~= "" and not Hidden(name) then
+				sa.castMacro = "/use item:" .. made .. "\n/cast " .. name
+			end
+		end
 		sa.labelText = make and "Make a Soulstone" or "Soulstone ready"
 		local icon = STONE_ICON
 		if id then
@@ -1666,7 +1693,10 @@ function Refresh()
 	ns.UpdateHealthAlert()
 	if ns.UpdateSummonWindow and ShardGridSummons and ShardGridSummons:IsShown() then ns.UpdateSummonWindow() end
 	if ns.UpdateSummonButton and ShardGridSummonButton and ShardGridSummonButton:IsShown() then ns.UpdateSummonButton() end
-	if ns.UpdateMakeButton and TradeFrame and TradeFrame:IsShown() then ns.UpdateMakeButton() end
+	if ns.UpdateMakeButton and TradeFrame and TradeFrame:IsShown() then
+		if ns.OfferNewHealthstone then ns.OfferNewHealthstone() end
+		ns.UpdateMakeButton()
+	end
 
 	if not ShouldShow(stats, n) then
 		frame:Hide()
@@ -2210,7 +2240,8 @@ local function OnSummonClicked(req)
 		SendChat(FillTemplate(db.summonGroupMsg or DEFAULT_GROUP_MSG, req, where, left), channel)
 	end
 	if db.summonSay then
-		SendChat(FillTemplate(db.summonGroupMsg or DEFAULT_GROUP_MSG, req, where, left), "SAY")
+		-- Outside an instance /say needs a key press or click; see ns.SayWhenAllowed.
+		ns.SayWhenAllowed(FillTemplate(db.summonGroupMsg or DEFAULT_GROUP_MSG, req, where, left))
 	end
 end
 
@@ -2326,6 +2357,7 @@ local function GetSummonRow(i)
 		local useDown = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false
 		if (down and true or false) ~= (useDown and true or false) then return end
 		if self.req then OnSummonClicked(self.req) UpdateSummonWindow() end
+		ns.FlushSay() -- this is a click, which /say needs
 	end)
 	row:SetScript("OnEnter", function(self)
 		if not self.req then return end
@@ -2587,18 +2619,76 @@ local function FindHealthstone()
 end
 ns.FindHealthstone = FindHealthstone
 
+-- Who took a Healthstone in a trade, and when (GetTime), keyed by GUID, or by whole name when
+-- the game gives no GUID. Kept for the session only.
+ns.stoneGiven = {}
+
+-- The player on the other side of the open trade: the key for ns.stoneGiven, and their name.
+function ns.TradePartner()
+	local guid
+	if UnitGUID then
+		local ok, g = pcall(UnitGUID, "NPC")
+		if ok and not IsSecret(g) and type(g) == "string" and g ~= "" then guid = g end
+	end
+	local name = ns.FullUnitName and ns.FullUnitName("NPC")
+	return guid or name, name
+end
+
+-- Whether one of your own trade slots holds a Healthstone right now.
+function ns.TradeHoldsStone()
+	for i = 1, 6 do
+		local name = GetTradePlayerItemInfo(i)
+		if not IsSecret(name) and type(name) == "string" and name:find("Healthstone", 1, true) then return true end
+		local link = GetTradePlayerItemLink and GetTradePlayerItemLink(i)
+		local id = (not IsSecret(link)) and type(link) == "string" and tonumber(link:match("item:(%d+)"))
+		if id and HEALTHSTONE_IDS[id] then return true end
+	end
+	return false
+end
+
+-- Seconds since this trade's partner last took a Healthstone, when that is inside the limit.
+function ns.StoneGivenRecently()
+	local wait = (db.tradeRepeatMinutes or 0) * 60
+	if wait <= 0 then return end
+	local who, name = ns.TradePartner()
+	local at = who and ns.stoneGiven[who]
+	local ago = at and (GetTime() - at)
+	if ago and ago >= 0 and ago < wait then return ago, name end
+end
+
+-- Puts a Healthstone in the open trade, once per trade (ns.tradeOffered, cleared when a trade
+-- opens), so a stone you take back out stays out. /shards debug shows why it last skipped.
 local function OfferHealthstone()
-	if not db or not db.tradeHealthstone or tradeBlocked then return end
+	if not db or not db.tradeHealthstone then return end
+	if ns.tradeOffered then return end
+	local stamp = date and date("%H:%M:%S ") or ""
+	if tradeBlocked then report["healthstone trade"] = stamp .. "skipped: the client refused it earlier this session" return end
 	if not (TradeFrame and TradeFrame:IsShown()) then return end
-	if db.tradeGroupOnly and not (UnitInParty("NPC") or UnitInRaid("NPC")) then return end
-	if GetCursorInfo() then return end
+	if db.tradeGroupOnly and not (UnitInParty("NPC") or UnitInRaid("NPC")) then
+		report["healthstone trade"] = stamp .. "skipped: they aren't in your group"
+		return
+	end
+	local ago, who = ns.StoneGivenRecently()
+	if ago then
+		who = who or "This player"
+		ago = math.floor(ago)
+		local when = ago < 60 and (ago .. " seconds ago") or (ago < 120 and "a minute ago" or (math.floor(ago / 60) .. " minutes ago"))
+		report["healthstone trade"] = stamp .. "skipped: " .. who .. " took one " .. when
+		if not ns.tradeRepeatTold then
+			ns.tradeRepeatTold = true
+			Print(who .. " took a Healthstone " .. when .. ", so none was placed. Drag one in to give it anyway.")
+		end
+		return
+	end
+	if GetCursorInfo() then report["healthstone trade"] = stamp .. "skipped: something is on the cursor" return end
 	local bag, slot = FindHealthstone()
-	if not bag then return end
+	if not bag then report["healthstone trade"] = stamp .. "skipped: no Healthstone in your bags" return end
 	local tradeSlot
 	for i = 1, 6 do
 		if not GetTradePlayerItemInfo(i) then tradeSlot = i break end
 	end
-	if not tradeSlot then return end
+	if not tradeSlot then report["healthstone trade"] = stamp .. "skipped: no empty trade slot" return end
+	ns.tradeOffered = true
 	inTradePass = true
 	local ok, err = pcall(function()
 		PickupSlot(bag, slot)
@@ -2606,7 +2696,69 @@ local function OfferHealthstone()
 	end)
 	inTradePass = false
 	if GetCursorInfo() then ClearCursor() end
-	report["healthstone trade"] = ok and "placed" or ("error: " .. tostring(err))
+	report["healthstone trade"] = stamp .. (ok and ("placed in slot " .. tradeSlot) or ("error: " .. tostring(err)))
+end
+
+-- A stone made while the trade is open (with the button on the trade window, the alert or the
+-- spell) goes into the trade as soon as it reaches your bags. Called on every bag change while
+-- a trade is open; it does nothing once a stone has been placed in this trade.
+function ns.OfferNewHealthstone()
+	if not db or not db.tradeHealthstone or tradeBlocked then return end
+	if ns.tradeOffered or ns.tradeOfferPending then return end
+	if not FindHealthstone() then return end
+	if C_Timer and C_Timer.After then
+		ns.tradeOfferPending = true
+		C_Timer.After(0.2, function()
+			ns.tradeOfferPending = nil
+			OfferHealthstone()
+			ns.UpdateMakeButton()
+		end)
+	else
+		OfferHealthstone()
+	end
+end
+
+-- Noting who took a Healthstone. While a trade is open, ns.tradeStaged holds the partner whenever
+-- one of your slots has a stone in it (placed by this addon or dragged in by you). The trade
+-- going through is what records it: the game's "Trade complete." message, or failing that, the
+-- stone being gone from your bags a moment after the window closes.
+do
+	local watch = CreateFrame("Frame")
+	for _, ev in ipairs({ "TRADE_PLAYER_ITEM_CHANGED", "TRADE_ACCEPT_UPDATE", "TRADE_CLOSED", "UI_INFO_MESSAGE" }) do
+		pcall(watch.RegisterEvent, watch, ev)
+	end
+	local function Given(staged)
+		ns.stoneGiven[staged.who] = GetTime()
+		report["healthstone given"] = (date and date("%H:%M:%S ") or "") .. (staged.name or "?")
+	end
+	watch:SetScript("OnEvent", function(_, event, _, message)
+		if not db then return end
+		if event == "UI_INFO_MESSAGE" then
+			local staged = ns.tradeStaged
+			if staged and not IsSecret(message) and ERR_TRADE_COMPLETE and message == ERR_TRADE_COMPLETE then
+				ns.tradeStaged = nil
+				Given(staged)
+			end
+		elseif event == "TRADE_CLOSED" then
+			local staged = ns.tradeStaged
+			if staged and not staged.closing and C_Timer and C_Timer.After then
+				staged.closing = true
+				C_Timer.After(1, function()
+					if ns.tradeStaged ~= staged then return end -- already recorded, or a new trade
+					ns.tradeStaged = nil
+					if not FindHealthstone() then Given(staged) end
+				end)
+			end
+		elseif TradeFrame and TradeFrame:IsShown() then
+			if ns.TradeHoldsStone() then
+				local who, name = ns.TradePartner()
+				ns.tradeStaged = who and { who = who, name = name } or nil
+			else
+				ns.tradeStaged = nil
+			end
+		end
+	end)
+	ns.tradeWatch = watch -- the offline tests drive its handler
 end
 
 -- Ranks of Create Healthstone, newest first. Casting by name uses the best one you know,
@@ -2706,6 +2858,8 @@ sumEvents:SetScript("OnEvent", function(_, event, text, sender, ...)
 	elseif event == "GROUP_ROSTER_UPDATE" then
 		if #requests > 0 then UpdateSummonWindow() end
 	elseif event == "TRADE_SHOW" then
+		ns.tradeOffered, ns.tradeOfferPending = nil, nil -- a new trade
+		ns.tradeRepeatTold, ns.tradeStaged = nil, nil
 		ns.UpdateMakeButton()
 		if C_Timer and C_Timer.After then
 			C_Timer.After(0.3, function() OfferHealthstone() ns.UpdateMakeButton() end)
@@ -2828,10 +2982,18 @@ do
 		if x and y then db.sayPromptX, db.sayPromptY = x, y end
 		ns.RestoreSayPromptPosition()
 	end)
+	-- The summon announcement in /say, waiting for a key press or a click: { text, at }.
+	local pendingSay
+
 	prompt:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText("Nobody is helping with the summon", 1, 1, 1)
-		GameTooltip:AddLine("Click to ask in /say for people to click the portal. Any key press does the same. Drag to move.", nil, nil, nil, true)
+		if pendingSay then
+			GameTooltip:SetText("Summon message for /say", 1, 1, 1)
+			GameTooltip:AddLine("Outside an instance the game only lets an addon post in /say when you click or press a key. Click to post it; any key press does the same. Drag to move.", nil, nil, nil, true)
+		else
+			GameTooltip:SetText("Nobody is helping with the summon", 1, 1, 1)
+			GameTooltip:AddLine("Click to ask in /say for people to click the portal. Any key press does the same. Drag to move.", nil, nil, nil, true)
+		end
 		GameTooltip:Show()
 	end)
 	prompt:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2842,7 +3004,17 @@ do
 		return "Summoning: please click the portal to help!"
 	end
 
+	local function NudgeDue() return cast and cast.due and not cast.asked end
+
 	local function Send()
+		if pendingSay then
+			local text = pendingSay.text
+			pendingSay = nil
+			SendChat(text, "SAY")
+			report["summon say"] = (date and date("%H:%M:%S ") or "") .. "posted"
+			if NudgeDue() then prompt:SetText("Ask for clickers in /say") else prompt:Hide() end
+			return
+		end
 		if not cast or cast.asked then return end
 		cast.asked = true
 		prompt:Hide()
@@ -2853,15 +3025,47 @@ do
 
 	-- Called from the key listener: a key press is the hardware event /say needs.
 	function ns.SayOnKey()
-		if cast and cast.due and not cast.asked then Send() end
+		if pendingSay or NudgeDue() then Send() end
 	end
 
+	-- Post in /say: at once inside an instance, otherwise on your next key press or a click on
+	-- the button (a summon cast from your action bar or a click-casting addon reaches this
+	-- addon as an event, where the game refuses /say: "blocked: UNKNOWN()").
+	function ns.SayWhenAllowed(text)
+		if IsInInstance and IsInInstance() then SendChat(text, "SAY") return end
+		pendingSay = { text = text, at = GetTime() }
+		ns.RestoreSayPromptPosition()
+		prompt:SetText("Post the summon in /say")
+		prompt:Show()
+		report["summon say"] = "waiting for a key press or a click on the button"
+	end
+
+	-- Called from inside a click: a waiting /say line can go now.
+	function ns.FlushSay()
+		if pendingSay then Send() end
+	end
+
+	-- Whether the summon is under way. Ritual of Summoning starts with an ordinary cast and only
+	-- then becomes a channel, so both count; so does a gap of up to 1.5 s between the two.
+	-- Nil when the game won't say.
+	local lastOn = 0
 	local function Channeling()
-		if not UnitChannelInfo then return false end
-		local ok, name, _, _, _, _, _, _, spellID = pcall(UnitChannelInfo, "player")
-		if not ok or IsSecret(name) or IsSecret(spellID) then return nil end -- the game won't say
-		if spellID == SUMMON_SPELL_ID then return true end
-		return name ~= nil and name == SummonSpellName()
+		local on = false
+		-- The spell ID is the 8th value of UnitChannelInfo and the 9th of UnitCastingInfo.
+		for i, fn in ipairs({ UnitChannelInfo or false, UnitCastingInfo or false }) do
+			if fn then
+				local ok, name, _, _, _, _, _, eighth, ninth = pcall(fn, "player")
+				local spellID = (i == 1) and eighth or ninth
+				if not ok or IsSecret(name) or IsSecret(spellID) then
+					on = nil -- the game won't say
+				elseif spellID == SUMMON_SPELL_ID or (name ~= nil and name == SummonSpellName()) then
+					lastOn = GetTime()
+					return true
+				end
+			end
+		end
+		if on == false and GetTime() - lastOn < 1.5 then return true end
+		return on
 	end
 
 	function ns.NoteSummonCast(short)
@@ -2870,12 +3074,21 @@ do
 	end
 
 	local function Tick()
+		if pendingSay then
+			-- Dropped once the summon is over (or after a minute), so it never posts late.
+			local age = GetTime() - pendingSay.at
+			if age > 60 or (age > 3 and Channeling() == false) then
+				pendingSay = nil
+				report["summon say"] = "dropped: the summon ended before a key press or click"
+				if NudgeDue() then prompt:SetText("Ask for clickers in /say") else prompt:Hide() end
+			end
+		end
 		if not cast or not db then return end
 		local elapsed = GetTime() - cast.at
 		local on = Channeling()
 		if on == false and elapsed > 3 then -- finished, cancelled or never started
 			cast = nil
-			prompt:Hide()
+			if not pendingSay then prompt:Hide() end
 			return
 		end
 		if cast.asked or on ~= true or elapsed < (db.summonNudgeAfter or 15) then return end
@@ -2886,6 +3099,7 @@ do
 				Send()
 			else
 				ns.RestoreSayPromptPosition()
+				if not pendingSay then prompt:SetText("Ask for clickers in /say") end
 				prompt:Show()
 				report["summon help asked"] = "waiting for a key press or a click on the button"
 			end
@@ -2987,7 +3201,9 @@ end
 msBtn:SetScript("PostClick", function(_, _, down)
 	local useDown = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false
 	if (down and true or false) ~= (useDown and true or false) then return end
-	-- The messages are sent from UNIT_SPELLCAST_SENT, whichever of these actually cast.
+	-- The messages are sent from UNIT_SPELLCAST_SENT, whichever of these actually cast. A /say
+	-- line it left waiting can go now, inside this click.
+	ns.FlushSay()
 	if not ManualUnit() and not msBtn.waitingFor then
 		Print("Nobody to summon. Target a party or raid member, hover one, or wait for a summon request.")
 	end
@@ -4251,7 +4467,14 @@ local function BuildConfig()
 		function() return db.tradeGroupOnly end,
 		function(v) db.tradeGroupOnly = v end,
 		"Keeps your Healthstone out of trades with people outside your party or raid.")
-	y = y - 26
+	y = y - 28
+	AddSlider(col, y, "One stone per player every", {
+		min = 0, max = 10, step = 1,
+		format = function(v) return v == 0 and "No limit" or (v == 1 and "1 minute" or (v .. " minutes")) end,
+		get = function() return db.tradeRepeatMinutes or 2 end,
+		set = function(v) db.tradeRepeatMinutes = v end,
+	})
+	y = y - 44
 	AddCheck(col, y, "Add a Create Healthstone button to trades",
 		function() return db.tradeCreate end,
 		function(v) db.tradeCreate = v ns.UpdateMakeButton() end,

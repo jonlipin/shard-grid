@@ -40,7 +40,7 @@ Both messages are yours to edit, with placeholders for the player's name, your z
 
 **Choosing a look.** The Look section of the options has a Window style button: Automatic (EllesmereUI's look when it is installed, otherwise Blizzard), Blizzard, or Dark, a flat dark style that needs no other addon. With Dark chosen, a slider sets how much of the world shows through its windows. Switching away from a style takes a reload, and Shard Grid offers one.
 
-**Healthstones.** With the trade options on, opening a trade drops a Healthstone straight into it, and offers a button to conjure one when you have none. You still press Trade yourself. The Healthstone on the shard window's title bar tells your raid, battleground or party to come and trade you.
+**Healthstones.** With the trade options on, opening a trade drops a Healthstone straight into it, and offers a button to conjure one when you have none. You still press Trade yourself. A stone you make while the trade is open goes in too, and a player who took one in the last couple of minutes is not handed another (the wait is yours to set). The Healthstone on the shard window's title bar tells your raid, battleground or party to come and trade you.
 
 ## Commands
 
