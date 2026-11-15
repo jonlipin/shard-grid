@@ -122,7 +122,7 @@ local function SkinAll(_, style)
 	end)
 
 	Try("summon window", function()
-		summonBorders = SkinWindow(ShardGridSummons, ns.sumMinBtn)
+		summonBorders = SkinWindow(ShardGridSummons, ns.sumMinBtn, ShardGridSummons and ShardGridSummons.sgScaleGrip)
 		local mini = ns.sumMini
 		if mini then
 			if mini.SetBackdrop then mini:SetBackdrop(nil) end
@@ -137,7 +137,7 @@ local function SkinAll(_, style)
 
 	Try("soulstone window", function()
 		local win = ShardGridStones
-		SkinWindow(win, win and win.reportBtn)
+		SkinWindow(win, win and win.reportBtn, win and win.sgScaleGrip)
 		local reportButton = win and win.reportBtn
 		if reportButton then
 			for _, region in ipairs({ reportButton:GetRegions() }) do

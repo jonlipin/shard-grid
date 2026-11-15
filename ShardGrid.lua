@@ -65,6 +65,9 @@ local DEFAULTS = {
 	summonSound = true,
 	summonWhisperAny = true, -- accept whispers from players outside the group (they get an Invite button)
 	summonMin = false,
+	sumScale = 1,             -- size of the summon window (its corner grip)
+	stoneScale = 1,           -- size of the soulstone window
+	pouchClosed = false,      -- keep the soul bag shut when every bag is opened at once
 	summonButton = false,     -- floating click-to-summon button
 	summonButtonSize = 40,
 	stoneEnabled = true,      -- soulstone tracker
@@ -1916,6 +1919,7 @@ grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 local function ApplyLock()
 	grip:SetShown(not db.locked)
+	if ns.ApplyWindowScales then ns.ApplyWindowScales() end
 	if ns.UpdateSummonButton then ns.UpdateSummonButton() end
 end
 
@@ -2478,6 +2482,7 @@ sumMinBtn:SetScript("OnClick", function()
 	if InCombatLockdown() then Print("Can't resize the summon window in combat.") return end
 	db.summonMin = not db.summonMin
 	UpdateSummonWindow()
+	ns.UpdateScaleGrips()
 end)
 sumClear:SetScript("OnClick", function()
 	if InCombatLockdown() then Print("Can't change the summon list in combat.") return end
@@ -2850,6 +2855,7 @@ sumEvents:SetScript("OnEvent", function(_, event, text, sender, ...)
 		UpdateCombatBanner(true)
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		UpdateCombatBanner(false)
+		if ns.windowScalePending then ns.ApplyWindowScales() end
 		ns.UpdateSummonButton()
 		if summonDirty then UpdateSummonWindow() end
 	elseif event == "PLAYER_LOGIN" then
@@ -3381,6 +3387,9 @@ end
 
 local stoneWin = CreatePanel("ShardGridStones", true)
 ns.CloseByHiding(stoneWin, stoneWin.sgClose)
+if type(stoneWin.sgClose) == "table" and stoneWin.sgClose.SetScript then
+	stoneWin.sgClose:SetScript("OnClick", function() ns.stoneManual = nil stoneWin:Hide() end)
+end
 stoneWin:SetFrameStrata("MEDIUM")
 stoneWin:SetWidth(STONE.W)
 stoneWin:Hide()
@@ -3451,6 +3460,124 @@ local function RestoreStonePosition()
 	else
 		stoneWin:SetPoint("TOPLEFT", UIParent, "CENTER", 160, -60)
 	end
+end
+
+ns.SetStage("window resize grips")
+-- ------------------------------------------------------------------
+-- Resizing the summon and soulstone windows. Each has a corner grip like the grid's. These are
+-- lists, not grids, so dragging it makes the whole window bigger or smaller (its scale), with
+-- the top-left corner staying put. The summon window holds secure buttons, so it can only be
+-- resized out of combat.
+-- ------------------------------------------------------------------
+do
+	local MIN_SCALE, MAX_SCALE = 0.6, 2
+	local wins = {}
+
+	local function Clamp(scale)
+		if type(scale) ~= "number" then scale = 1 end
+		scale = math.floor(scale * 100 + 0.5) / 100
+		return math.max(MIN_SCALE, math.min(MAX_SCALE, scale))
+	end
+
+	-- Sets a window's size, keeping its top-left corner where it is on screen. leftPx and topPx
+	-- are that corner in screen pixels (worked out from the window when left out). Returns
+	-- false when it can't be done right now.
+	function ns.SetWindowScale(id, scale, leftPx, topPx)
+		local o = wins[id]
+		if not o or not db then return false end
+		if o.secure and InCombatLockdown() then return false end
+		local win = o.win
+		scale = Clamp(scale)
+		if not leftPx then
+			local eff, left, top = win:GetEffectiveScale(), win:GetLeft(), win:GetTop()
+			if eff and left and top then leftPx, topPx = left * eff, top * eff end
+		end
+		local old = win:GetScale() or 1
+		db[o.key] = scale
+		win:SetScale(scale)
+		if leftPx then
+			-- Saved positions are in the window's own units, which just changed.
+			local unit = UIParent:GetEffectiveScale() * scale
+			db[o.x], db[o.y] = leftPx / unit, topPx / unit
+		elseif db[o.x] and db[o.y] then
+			db[o.x], db[o.y] = db[o.x] * old / scale, db[o.y] * old / scale
+		end
+		o.restore()
+		return true
+	end
+
+	function ns.UpdateScaleGrips()
+		if not db then return end
+		for _, o in pairs(wins) do
+			o.grip:SetShown(not db.locked and not (o.hide and o.hide()))
+		end
+	end
+
+	-- The saved sizes, applied at login. Saved positions are already in each window's own units.
+	function ns.ApplyWindowScales()
+		if not db then return end
+		ns.windowScalePending = nil
+		for _, o in pairs(wins) do
+			if o.secure and InCombatLockdown() then
+				ns.windowScalePending = true -- done when combat ends
+			else
+				o.win:SetScale(Clamp(db[o.key]))
+			end
+		end
+		ns.UpdateScaleGrips()
+	end
+
+	local function AddGrip(id, o)
+		wins[id] = o
+		local win = o.win
+		local grip = CreateFrame("Button", nil, win)
+		o.grip, win.sgScaleGrip = grip, grip
+		grip:SetSize(14, 14)
+		grip:SetPoint("BOTTOMRIGHT", -3, 3)
+		RaiseWithinParent(grip, win)
+		grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+		grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+		grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+
+		-- The window's right edge follows the cursor; its height keeps the same proportion.
+		local function Track()
+			if o.secure and InCombatLockdown() then grip:SetScript("OnUpdate", nil) return end
+			local x = GetCursorPosition()
+			local scale = Clamp((x + grip.edge - grip.leftPx) / (grip.width * UIParent:GetEffectiveScale()))
+			if scale ~= db[o.key] then ns.SetWindowScale(id, scale, grip.leftPx, grip.topPx) end
+		end
+		grip:SetScript("OnMouseDown", function(self)
+			if o.secure and InCombatLockdown() then Print("Can't resize the " .. o.name .. " in combat.") return end
+			local eff, left, top, right = win:GetEffectiveScale(), win:GetLeft(), win:GetTop(), win:GetRight()
+			if not (eff and left and top and right) then return end
+			self.leftPx, self.topPx, self.width = left * eff, top * eff, win:GetWidth()
+			self.edge = right * eff - GetCursorPosition() -- from the cursor to the window's edge
+			self:SetScript("OnUpdate", Track)
+		end)
+		grip:SetScript("OnMouseUp", function(self)
+			self:SetScript("OnUpdate", nil)
+			if ns.SyncConfig then ns.SyncConfig() end
+		end)
+		grip:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+		grip:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText("Drag to resize")
+			GameTooltip:AddLine("Lock position in /shards hides this grip.", 0.7, 0.7, 0.7, true)
+			GameTooltip:Show()
+		end)
+		grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	end
+
+	AddGrip("sum", {
+		win = sumWin, key = "sumScale", x = "sumX", y = "sumY", restore = RestoreSummonPosition,
+		secure = true, name = "summon window",
+		hide = function() return db.summonMin end, -- a title strip has no room for it
+	})
+	AddGrip("stone", {
+		win = stoneWin, key = "stoneScale", x = "stoneX", y = "stoneY", restore = RestoreStonePosition,
+		name = "soulstone window",
+	})
+	sumClear:SetPoint("BOTTOMRIGHT", -12, 0) -- clear of the grip
 end
 
 ns.SetStage("soulstone rows")
@@ -3781,7 +3908,10 @@ function ns.UpdateStones(rescan)
 		if ns.UpdateStoneAlert then ns.UpdateStoneAlert() end
 	end
 	local grouped = IsInGroup and IsInGroup()
-	if not db.stoneEnabled or (db.stoneSoloHide and not grouped and #stones == 0) then
+	-- ns.stoneManual: you opened the window yourself (/shards stones), so "hide while not in a
+	-- group" leaves it alone until you close it. Otherwise it would vanish again within seconds,
+	-- with no chance to move or resize it.
+	if not db.stoneEnabled or (db.stoneSoloHide and not grouped and #stones == 0 and not ns.stoneManual) then
 		stoneWin:Hide()
 		return
 	end
@@ -3855,9 +3985,11 @@ end
 
 function ns.ToggleStoneWindow()
 	if stoneWin:IsShown() then
+		ns.stoneManual = nil
 		stoneWin:Hide()
 	else
 		db.stoneEnabled = true
+		ns.stoneManual = true
 		RestoreStonePosition()
 		ns.UpdateStones(true)
 		stoneWin:Show()
@@ -4339,6 +4471,11 @@ local function BuildConfig()
 	AddCheck(col, y, "Show minimap button",
 		function() return db.minimapShown end,
 		function(v) db.minimapShown = v ns.UpdateMinimapButton() end)
+	y = y - 26
+	AddCheck(col, y, "Keep the soul bag closed",
+		function() return db.pouchClosed end,
+		function(v) db.pouchClosed = v end,
+		"When all your bags open at once (the open-all-bags key, or a shop, mailbox or bank opening them), the soul bag stays shut. Click the bag itself to look inside. Works with separate bags, not the combined bag window.")
 
 	y = y - 36
 	AddHeader(col, y, "Look")
@@ -4506,7 +4643,14 @@ local function BuildConfig()
 		function() return db.stoneSoloHide end,
 		function(v) db.stoneSoloHide = v ns.UpdateStones(true) end,
 		"Your own soulstone is still listed when you have one.")
-	y = y - 26
+	y = y - 28
+	AddSlider(col, y, "Soulstone window size", {
+		min = 60, max = 200, step = 5,
+		get = function() return math.floor((db.stoneScale or 1) * 100 + 0.5) end,
+		set = function(v) ns.SetWindowScale("stone", v / 100) end,
+		format = function(v) return v .. "%" end,
+	})
+	y = y - 40
 	AddCheck(col, y, "Tell the group when I soulstone someone",
 		function() return db.stoneAnnounce end,
 		function(v) db.stoneAnnounce = v end,
@@ -4600,7 +4744,19 @@ local function BuildConfig()
 	AddCheck(col, y, "Pop the summon window up on a request",
 		function() return db.summonPopup end,
 		function(v) db.summonPopup = v end)
-	y = y - 26
+	y = y - 28
+	AddSlider(col, y, "Summon window size", {
+		min = 60, max = 200, step = 5,
+		get = function() return math.floor((db.sumScale or 1) * 100 + 0.5) end,
+		set = function(v)
+			if not ns.SetWindowScale("sum", v / 100) then
+				Print("Can't resize the summon window in combat.")
+				if C_Timer and C_Timer.After then C_Timer.After(0, function() ns.SyncConfig() end) end
+			end
+		end,
+		format = function(v) return v .. "%" end,
+	})
+	y = y - 40
 	AddCheck(col, y, "Tell party / raid and ask for clickers",
 		function() return db.summonAnnounce end,
 		function(v) db.summonAnnounce = v end,
@@ -4804,15 +4960,18 @@ function ToggleConfig()
 	if not config then BuildConfig() end -- builds the controls; the window stays hidden
 	if ns.optionsPage and ns.optionsPage:IsVisible() then
 		-- Closing a Blizzard panel from addon code can be a protected action, so this is a
-		-- try, not a promise; the panel's own close button always works.
-		if SettingsPanel and HideUIPanel then pcall(HideUIPanel, SettingsPanel) end
+		-- try, not a promise; the panel's own close button always works. In combat it is
+		-- always refused, so it isn't tried.
+		if SettingsPanel and HideUIPanel and not InCombatLockdown() then pcall(HideUIPanel, SettingsPanel) end
 		if ns.optionsPage:IsVisible() and not ns.toldYouToClose then
 			ns.toldYouToClose = true
 			Print("Options are open at Esc > Options > AddOns > Shard Grid. Close them there.")
 		end
 		return
 	end
-	if nativeCategory and Settings and Settings.OpenToCategory and not ns.nativeOpenFailed then
+	-- In combat the game refuses to open its options panel for an addon (OpenSettingsPanel is
+	-- protected), so Shard Grid's own window is used for that one time.
+	if nativeCategory and Settings and Settings.OpenToCategory and not ns.nativeOpenFailed and not InCombatLockdown() then
 		local id = nativeCategory.GetID and nativeCategory:GetID() or nativeCategory.ID or nativeCategory
 		pcall(Settings.OpenToCategory, id)
 		-- Trust what is on screen, not the call's return value.
@@ -5238,6 +5397,120 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2)
 	Refresh()
 	ns.SyncConfig()
 end)
+
+ns.SetStage("soul bag stays closed")
+-- ------------------------------------------------------------------
+-- Keeping the soul bag closed. With the grid on screen there is little reason to look inside
+-- the soul bag, so (as an option) it stays shut when the game opens every bag at once: the
+-- open-all-bags key, or a shop, mailbox or bank opening them. Opening the bag by itself still
+-- works. The game's own functions do all the opening; this only closes the soul bag again
+-- afterwards. Separate bags only: in the combined bag window the soul bag has no window of
+-- its own.
+-- (A function of its own: the file is at the limit of 200 local variables.)
+-- ------------------------------------------------------------------
+function ns.SetupSoulBag()
+	-- When each bag's window last opened and closed (GetTime, which is the same for everything
+	-- that happens within one frame, so "equal to now" means "during the call just made").
+	local openedAt, closedAt = {}, {}
+
+	local function BagOf(frame)
+		if type(frame) ~= "table" then return end
+		local ok, id = pcall(function() return (frame.GetBagID and frame:GetBagID()) or frame:GetID() end)
+		if ok and type(id) == "number" then return id end
+	end
+
+	local watching = false
+	if EventRegistry and EventRegistry.RegisterCallback then
+		local a = pcall(EventRegistry.RegisterCallback, EventRegistry, "ContainerFrame.OpenBag", function(_, frame)
+			local bag = BagOf(frame)
+			if bag then openedAt[bag] = GetTime() end
+		end, openedAt)
+		local b = pcall(EventRegistry.RegisterCallback, EventRegistry, "ContainerFrame.CloseBag", function(_, frame)
+			local bag = BagOf(frame)
+			if bag then closedAt[bag] = GetTime() end
+		end, closedAt)
+		watching = a and b
+	end
+
+	-- The soul bags by bag number, and how many there are.
+	local function SoulBags()
+		local set, n = {}, 0
+		for bag = 1, MAX_BAG do
+			if (GetNumSlots(bag) or 0) > 0 and IsSoulBag(bag) then set[bag] = true n = n + 1 end
+		end
+		return set, n
+	end
+
+	local function Wanted()
+		if not (watching and db and db.pouchClosed) then return false end
+		if type(CloseBag) ~= "function" or type(IsBagOpen) ~= "function" then return false end
+		local manager = ContainerFrameSettingsManager
+		if type(manager) == "table" and manager.IsUsingCombinedBags then
+			local ok, combined = pcall(manager.IsUsingCombinedBags, manager)
+			if ok and combined then return false end
+		end
+		return true
+	end
+
+	local function Shut(bag)
+		local ok, open = pcall(IsBagOpen, bag)
+		if ok and open then pcall(CloseBag, bag) end
+	end
+
+	-- After the game opened every bag (a shop, the mailbox, the bank): shut the soul bag if
+	-- that call is what opened it.
+	function ns.AfterOpenAllBags()
+		if not Wanted() then return end
+		local now = GetTime()
+		for bag in pairs((SoulBags())) do
+			if openedAt[bag] == now then Shut(bag) end
+		end
+	end
+
+	-- After the open-all-bags key. The game closes whatever was open and then, unless every
+	-- bag had been open, opens them all. With the soul bag kept shut "every bag" is never true,
+	-- so the key would open the bags again instead of closing them. That case is recognized
+	-- here (every other bag was open, the soul bag was not) and the bags are closed.
+	function ns.AfterToggleAllBags()
+		if not Wanted() then return end
+		local soul, count = SoulBags()
+		if count == 0 then return end
+		local now = GetTime()
+		local othersWereOpen, soulWasOpen = true, false
+		for bag = 0, MAX_BAG do
+			if bag == 0 or (GetNumSlots(bag) or 0) > 0 then
+				local was = closedAt[bag] == now -- the key closes every open bag first
+				if soul[bag] then
+					soulWasOpen = soulWasOpen or was
+				elseif not was then
+					othersWereOpen = false
+				end
+			end
+		end
+		if othersWereOpen and not soulWasOpen then
+			for bag = 0, MAX_BAG do Shut(bag) end
+			report["soul bag closed"] = "the key closed the bags"
+			return
+		end
+		for bag in pairs(soul) do
+			if openedAt[bag] == now then Shut(bag) end
+		end
+		report["soul bag closed"] = "kept shut when the bags opened"
+	end
+
+	local hooked = 0
+	if watching and hooksecurefunc then
+		if type(OpenAllBags) == "function" and pcall(hooksecurefunc, "OpenAllBags", function() pcall(ns.AfterOpenAllBags) end) then
+			hooked = hooked + 1
+		end
+		if type(ToggleAllBags) == "function" and pcall(hooksecurefunc, "ToggleAllBags", function() pcall(ns.AfterToggleAllBags) end) then
+			hooked = hooked + 1
+		end
+	end
+	ns.soulBagHooks = hooked
+	report["soul bag option"] = hooked == 2 and "available" or "not available on this client"
+end
+ns.SetupSoulBag()
 
 ns.SetStage("slash commands")
 -- ------------------------------------------------------------------
