@@ -54,6 +54,7 @@ local DEFAULTS = {
 	alertThreshold = 5, -- alert while total shards < this
 	alertSize = 48,
 	alertSound = true,
+	alertRestOff = false,     -- no alert icons while in a rested zone (inn or city)
 	alertSoundChoice = 1,
 	summonEnabled = true,   -- listen for summon requests
 	summonPopup = true,     -- pop the window up when a request arrives
@@ -776,12 +777,21 @@ end
 local alertPreview = false -- config "show for positioning"
 local wasLow = false
 
+-- True while the alert icons are switched off for being in a rested zone (an inn or a city).
+function ns.AlertsResting()
+	if not (db and db.alertRestOff) or type(IsResting) ~= "function" then return false end
+	local ok, resting = pcall(IsResting)
+	if not ok or (issecretvalue ~= nil and issecretvalue(resting)) then return false end
+	return resting and true or false
+end
+
 local function UpdateAlert(stats)
 	local total = stats.inSoul + stats.outside
 	if total > 0 then db.seenShards = true end
 	local _, class = UnitClass("player")
 	local relevant = class == "WARLOCK" or stats.hasSoulBag or db.seenShards
-	local low = db.alertEnabled and relevant and total < db.alertThreshold
+	-- Leaving the rested zone while still low counts as running low: the sound plays then.
+	local low = db.alertEnabled and relevant and total < db.alertThreshold and not ns.AlertsResting()
 
 	if low and not wasLow and db.alertSound then
 		ns.PlayAlertSound()
@@ -915,14 +925,19 @@ do
 			if InCombatLockdown() then f.castDirty = true return end
 			f.castDirty = nil
 			local want = on and (f.castSpell or f.castItem) and not alertPreview
-			if want then
+			-- Armed: the icon isn't showing as combat starts, but may appear during the fight,
+			-- when this button can no longer be shown. So it is put in place now, unseen, with
+			-- the macro that makes or uses the item (f.armMacro; f.arming is set as combat starts).
+			local armed = not want and f.arming and f.armMacro and not alertPreview
+			f.armed = armed and true or nil
+			if want or armed then
 				local size = db.alertSize
 				b:SetSize(size, size)
 				-- f.castMacro, when set, covers the item being made in combat, where this button
 				-- can't change: it uses the item if it exists, otherwise casts the spell.
-				if f.castMacro then
+				if armed or f.castMacro then
 					b:SetAttribute("type", "macro")
-					b:SetAttribute("macrotext", f.castMacro)
+					b:SetAttribute("macrotext", armed and f.armMacro or f.castMacro)
 					b:SetAttribute("item", nil)
 					b:SetAttribute("spell", nil)
 				elseif f.castItem then
@@ -938,7 +953,7 @@ do
 				end
 				Place(b)
 			end
-			b:SetShown(want and true or false)
+			b:SetShown((want or armed) and true or false)
 		end
 
 		-- Shown while `on`, or as a preview while "Show alert now" is ticked.
@@ -1003,11 +1018,21 @@ do
 				local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
 				if not fn then return id, nil end
 				local ok, start, duration = pcall(fn, id)
-				if not ok or Hidden(start) or Hidden(duration) then return id, nil end
+				if not ok or Hidden(start) or Hidden(duration) then
+					-- In a fight the game keeps cooldowns from addons. Go by the last one it
+					-- did show (the caller adds the stone you were seen to use).
+					local last = ns.stoneCdEnd
+					report["soulstone cooldown"] = "withheld, going by what was last seen"
+					if last and last > now then return id, false, last end
+					return id, true
+				end
+				report["soulstone cooldown"] = "readable"
 				if type(start) ~= "number" or type(duration) ~= "number" or start == 0 or duration <= 1.5 then
+					ns.stoneCdEnd = nil
 					return id, true
 				end
 				local readyAt = start + duration
+				ns.stoneCdEnd = readyAt
 				return id, readyAt <= now, readyAt
 			end
 		end
@@ -1050,15 +1075,19 @@ do
 		local now, ends = GetTime(), nil
 		local function Later(t) if t and t > now and t > (ends or 0) then ends = t end end
 		local fn = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+		local withheld = false
 		if fn then
 			for _, id in ipairs(STONE_ITEMS) do
 				local ok, start, duration = pcall(fn, id)
+				if not ok or Hidden(start) or Hidden(duration) then withheld = true end
 				if ok and type(start) == "number" and type(duration) == "number" and not Hidden(start) and not Hidden(duration)
 					and start > 0 and duration > 1.5 then
 					Later(start + duration)
 				end
 			end
 		end
+		-- In a fight the game keeps cooldowns from addons: go by the last one it showed.
+		if withheld then Later(ns.stoneCdEnd) elseif fn then ns.stoneCdEnd = ends end
 		if db and db.stoneUsedAt and time then Later(now + (db.stoneUsedAt + STONE_COOLDOWN - time())) end
 		if ns.MyStoneExpires then Later(ns.MyStoneExpires()) end
 		return ends
@@ -1084,6 +1113,9 @@ do
 		if warlock and db.stoneAlert then id, ready, readyAt = ns.ReadyStone() end
 		if not db.stoneAlert then
 			report["soulstone ready"] = "alert off"
+		elseif ns.AlertsResting() then
+			id = nil
+			report["soulstone ready"] = "alert off in a rested zone"
 		elseif not warlock then
 			report["soulstone ready"] = "not a warlock"
 		elseif id and ready == nil then
@@ -1114,19 +1146,28 @@ do
 		sa.make = make
 		sa.castSpell = make and KnownCreateSoulstone() or nil
 		sa.castItem = (show and not make and id) and ("item:" .. id) or nil
-		-- Make state: a macro that uses the stone if there is one, then casts Create Soulstone.
+		-- Make state: a macro that casts Create Soulstone (refused at once when a stone is in your bags), then uses the stone. The other order cancelled the who-to-stone prompt when an enemy was targeted.
 		-- Out of combat the button switches to "use" as soon as the stone exists; in combat it
 		-- can't change, so the macro is what lets the second click use a stone made in combat.
-		sa.castMacro = nil
-		if sa.castSpell then
+		-- The same macro arms the button for a fight in which the icon may yet appear (the
+		-- cooldown running out mid-fight), since the button can't be shown once combat has begun.
+		sa.castMacro, sa.armMacro = nil, nil
+		local best = (warlock and db.stoneAlert and not ns.AlertsResting()) and KnownCreateSoulstone() or nil
+		if best then
 			local made
 			for i, spell in ipairs(CREATE_SOULSTONE) do
-				if spell == sa.castSpell then made = MADE_STONE[i] end
+				if spell == best then made = MADE_STONE[i] end
 			end
-			local name = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(sa.castSpell))
-				or (GetSpellInfo and GetSpellInfo(sa.castSpell))
+			local name = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(best))
+				or (GetSpellInfo and GetSpellInfo(best))
 			if made and type(name) == "string" and name ~= "" and not Hidden(name) then
-				sa.castMacro = "/use item:" .. made .. "\n/cast " .. name
+				-- A name ending in brackets, like "Create Soulstone (Major)", needs "()" after it:
+				-- otherwise /cast reads the brackets as a rank and finds no such spell.
+				if name:sub(-1) == ")" then name = name .. "()" end
+				sa.armMacro = "/cast " .. name .. "\n/use item:" .. made
+				-- an older, lesser stone still in your bags
+				if id and id ~= made then sa.armMacro = sa.armMacro .. "\n/use item:" .. id end
+				if sa.castSpell then sa.castMacro = sa.armMacro end
 			end
 		end
 		sa.labelText = make and "Make a Soulstone" or "Soulstone ready"
@@ -1166,6 +1207,8 @@ do
 		local missing = false
 		if not db.healthAlert then
 			report["healthstone"] = "alert off"
+		elseif ns.AlertsResting() then
+			report["healthstone"] = "alert off in a rested zone"
 		elseif select(2, UnitClass("player")) ~= "WARLOCK" then
 			report["healthstone"] = "not a warlock"
 		elseif not KnowsCreateHealthstone() then
@@ -1186,10 +1229,26 @@ do
 	pcall(ev.RegisterEvent, ev, "PLAYER_ENTERING_WORLD")
 	pcall(ev.RegisterEvent, ev, "SPELLS_CHANGED")
 	pcall(ev.RegisterEvent, ev, "PLAYER_REGEN_ENABLED") -- the click buttons catch up
+	pcall(ev.RegisterEvent, ev, "PLAYER_REGEN_DISABLED") -- the last moment they can change
+	pcall(ev.RegisterEvent, ev, "PLAYER_UPDATE_RESTING") -- entering or leaving an inn or city
 	if ev.RegisterUnitEvent then pcall(ev.RegisterUnitEvent, ev, "UNIT_SPELLCAST_SUCCEEDED", "player") end
 	ev:SetScript("OnEvent", function(_, event, unit, _, spellID)
 		if event == "UNIT_SPELLCAST_SUCCEEDED" then
 			if unit ~= "player" or not ns.NoteStoneUsed(spellID) then return end
+		end
+		-- Combat is starting (the buttons can still change during this event). Arm the
+		-- Soulstone button if its icon could appear within the fight: the cooldown is over or
+		-- has under 15 minutes left. A longer wait isn't armed, so nothing unseen sits there.
+		if event == "PLAYER_REGEN_DISABLED" then
+			local ends = ns.StoneCooldownEnds()
+			sa.arming = (not ends or ends - GetTime() < 900) or nil
+			report["soulstone click in combat"] = sa.arming and "armed" or "not armed: cooldown too long"
+		elseif event == "PLAYER_REGEN_ENABLED" then
+			sa.arming = nil
+		end
+		if event == "PLAYER_UPDATE_RESTING" and ns.Refresh then
+			ns.Refresh() -- the low shard alert too; it updates the other two itself
+			return
 		end
 		ns.UpdateStoneAlert()
 		ns.UpdateHealthAlert()
@@ -4475,7 +4534,7 @@ local function BuildConfig()
 	AddCheck(col, y, "Keep the soul bag closed",
 		function() return db.pouchClosed end,
 		function(v) db.pouchClosed = v end,
-		"When all your bags open at once (the open-all-bags key, or a shop, mailbox or bank opening them), the soul bag stays shut. Click the bag itself to look inside. Works with separate bags, not the combined bag window.")
+		"When all your bags open at once (the open-all-bags key, or a vendor, banker, auctioneer or mailbox opening them), the soul bag stays shut. Click the bag itself to look inside. Works with separate bags, not the combined bag window.")
 
 	y = y - 36
 	AddHeader(col, y, "Look")
@@ -4725,6 +4784,11 @@ local function BuildConfig()
 		function() return alertPreview end,
 		function(v) alertPreview = v Refresh() end,
 		"Keeps the alert icons (low shards, Soulstone ready and No Healthstone) visible so you can drag them where you want, with the options closed too. Untick it when they are placed; a reload turns it off as well.")
+	y = y - 26
+	AddCheck(col, y, "No alerts in rested zones",
+		function() return db.alertRestOff end,
+		function(v) db.alertRestOff = v Refresh() end,
+		"Hides the alert icons (low shards, Soulstone ready and No Healthstone) while you are resting in an inn or a city. They come back, with the low shard sound, when you leave.")
 
 
 
@@ -5506,6 +5570,33 @@ function ns.SetupSoulBag()
 		if type(ToggleAllBags) == "function" and pcall(hooksecurefunc, "ToggleAllBags", function() pcall(ns.AfterToggleAllBags) end) then
 			hooked = hooked + 1
 		end
+	end
+	-- Vendors, bankers, auctioneers and the mailbox. Some open the bags through OpenAllBags
+	-- (hooked above), some through OpenAllBagsMatchingContext, and other addons' bag code may
+	-- open them one at a time. The first is hooked like the others; for the rest, when one of
+	-- those windows opens, any soul bag that opened within that moment is shut on the next frame.
+	if watching and hooksecurefunc and type(OpenAllBagsMatchingContext) == "function" then
+		pcall(hooksecurefunc, "OpenAllBagsMatchingContext", function() pcall(ns.AfterOpenAllBags) end)
+	end
+	function ns.AfterShopOpened(since)
+		if not Wanted() then return end
+		for bag in pairs((SoulBags())) do
+			if openedAt[bag] and openedAt[bag] >= since then
+				Shut(bag)
+				report["soul bag closed"] = "kept shut at a vendor, bank, auction house or mailbox"
+			end
+		end
+	end
+	if watching and CreateFrame and C_Timer and C_Timer.After then
+		local shops = CreateFrame("Frame")
+		for _, event in ipairs({ "MERCHANT_SHOW", "BANKFRAME_OPENED", "AUCTION_HOUSE_SHOW", "MAIL_SHOW", "GUILDBANKFRAME_OPENED", "TRADE_SHOW" }) do
+			pcall(shops.RegisterEvent, shops, event)
+		end
+		shops:SetScript("OnEvent", function()
+			local since = GetTime()
+			ns.AfterShopOpened(since) -- if the game's own windows already opened the bags
+			C_Timer.After(0, function() pcall(ns.AfterShopOpened, since) end)
+		end)
 	end
 	ns.soulBagHooks = hooked
 	report["soul bag option"] = hooked == 2 and "available" or "not available on this client"
