@@ -24,7 +24,7 @@ Drag the grid where you want it, and drag the grip in its corner to set how many
 
 **Reading the grid.** Filled slots are shards, dim slots are room to spare, and the title counts them. With a soul bag the title reads `9/14`, and shards sitting in your ordinary bags are added on the end in orange, with any past the number you have chosen to keep in red. Shards stay packed together, so the slot that empties when you spend one is always the one against the free space. Hover the grid for the full breakdown.
 
-**Not running dry.** Turn on the low shard alert and pick a threshold. A separate icon appears and pulses whenever you drop below it, so you find out at the bank rather than at a summoning stone. Drag it wherever you want, and tick "Show alert now" to place it without waiting to run low. Tick "No alerts in rested zones" to keep the alert icons hidden while you are in an inn or a city.
+**Not running dry.** Turn on the low shard alert and pick a threshold. A separate icon appears and pulses whenever you drop below it, so you find out at the bank rather than at a summoning stone. Drag it wherever you want, and tick "Show alert now" to place it without waiting to run low. Tick "No alerts in rested zones" to keep the alert icons hidden while you are in an inn or a city. On a character that is not a warlock the addon stays out of the way by itself ("Only on warlocks", on by default).
 
 **Not forgetting your stones.** Two more icons work the same way: a purple one while your Soulstone is going unused (one in your bags off cooldown, or none made and the cooldown over), and a green one while you have no Healthstone in your bags. Click them to make the stone, and click the Soulstone one again to use it on your target.
 

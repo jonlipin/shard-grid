@@ -83,6 +83,7 @@ local DEFAULTS = {
 	tradeCreate = true,   -- offer a Create Healthstone button on the trade window
 	hsAnnounceBtn = true, -- a button on the grid's title bar that offers Healthstones to the group
 	minimapShown = true,
+	warlockOnly = true,       -- on any other class the addon keeps out of the way
 	minimapAngle = 215, -- degrees around the minimap
 	style = "auto",     -- window style: "auto" (EllesmereUI when it is running), "blizzard" or "dark"
 	darkAlpha = 0.92,   -- background opacity of the Dark style
@@ -280,6 +281,24 @@ local function Excess(stats)
 end
 ns.Excess = Excess
 
+-- When an addon picks a shard up and puts it down, the game plays its own gem sounds, which
+-- no option of this addon governs. With shards being moved one per key press that is a click
+-- on every cast, so those two sound files are muted for a moment around each move or delete.
+-- (File ids of the "pick up gems" and "put down gems" sound kits, 1204 and 1221.)
+function ns.QuietShardMoves()
+	if not (MuteSoundFile and UnmuteSoundFile and C_Timer and C_Timer.After) then return false end
+	pcall(MuteSoundFile, 567574)
+	pcall(MuteSoundFile, 567568)
+	ns.quietUntil = GetTime() + 0.5
+	C_Timer.After(0.6, function()
+		if GetTime() >= (ns.quietUntil or 0) then
+			pcall(UnmuteSoundFile, 567574)
+			pcall(UnmuteSoundFile, 567568)
+		end
+	end)
+	return true
+end
+
 -- Deletes ONE overflow shard stack (last bag slot first) and returns how many shards that was.
 -- Verified in-game: the client allows a single protected item action per hardware event; a second
 -- DeleteCursorItem in the same key press is refused ("Interface action failed because of an AddOn").
@@ -371,7 +390,7 @@ local function RunAutoDelete(stats)
 			announceFrom = nil
 		end
 	end
-	if (db.autoDelete or manualRun) and not deleteBlocked then
+	if (db.autoDelete or manualRun) and not deleteBlocked and not ns.Dormant() then
 		pendingExcess = Excess(stats)
 		if ns.NeedsFill(stats) then pendingExcess = math.max(pendingExcess, 1) end -- a move is owed
 	else
@@ -388,9 +407,13 @@ function ns.HardwareDeletePass(fromHook)
 	local _, stats = Scan()
 	-- The soul bag is filled before anything is deleted: this press moves a shard instead.
 	if ns.NeedsFill(stats) then
+		-- A move that failed is not tried again on every key press: wait a few seconds.
+		if (ns.fillRetryAt or 0) > GetTime() then return end
 		inHardwarePass, passBlocked = true, false
+		ns.QuietShardMoves()
 		local ok, moved = pcall(ns.FillSoulBag)
 		inHardwarePass = false
+		if not (ok and moved) then ns.fillRetryAt = GetTime() + 5 end
 		if fromHook and passBlocked then
 			ns.RefuseHook(fromHook)
 			return
@@ -410,6 +433,7 @@ function ns.HardwareDeletePass(fromHook)
 	if excess <= 0 then pendingExcess = 0 return end
 
 	inHardwarePass, passBlocked = true, false
+	ns.QuietShardMoves()
 	local ok, issued = pcall(DeleteShards, excess)
 	inHardwarePass = false
 	if fromHook and passBlocked then
@@ -777,6 +801,14 @@ end
 local alertPreview = false -- config "show for positioning"
 local wasLow = false
 
+-- True on a character that isn't a warlock, while "Only on warlocks" is ticked: the grid, the
+-- alerts, the soulstone tracker and the minimap button all stay away. /shards still works.
+function ns.Dormant()
+	if not db or db.warlockOnly == false or not UnitClass then return false end
+	local _, class = UnitClass("player")
+	return class ~= nil and class ~= "WARLOCK"
+end
+
 -- True while the alert icons are switched off for being in a rested zone (an inn or a city).
 function ns.AlertsResting()
 	if not (db and db.alertRestOff) or type(IsResting) ~= "function" then return false end
@@ -791,7 +823,7 @@ local function UpdateAlert(stats)
 	local _, class = UnitClass("player")
 	local relevant = class == "WARLOCK" or stats.hasSoulBag or db.seenShards
 	-- Leaving the rested zone while still low counts as running low: the sound plays then.
-	local low = db.alertEnabled and relevant and total < db.alertThreshold and not ns.AlertsResting()
+	local low = db.alertEnabled and relevant and total < db.alertThreshold and not ns.AlertsResting() and not ns.Dormant()
 
 	if low and not wasLow and db.alertSound then
 		ns.PlayAlertSound()
@@ -1736,7 +1768,7 @@ end
 -- ------------------------------------------------------------------
 
 local function ShouldShow(stats, n)
-	if not db.shown then return false end
+	if not db.shown or ns.Dormant() then return false end
 	local _, class = UnitClass("player")
 	return class == "WARLOCK" or stats.hasSoulBag or n > 0
 end
@@ -3966,6 +3998,10 @@ function ns.UpdateStones(rescan)
 		AnnounceNewStones(previous)
 		if ns.UpdateStoneAlert then ns.UpdateStoneAlert() end
 	end
+	if ns.Dormant() and not ns.stoneManual then
+		stoneWin:Hide()
+		return
+	end
 	local grouped = IsInGroup and IsInGroup()
 	-- ns.stoneManual: you opened the window yourself (/shards stones), so "hide while not in a
 	-- group" leaves it alone until you close it. Otherwise it would vanish again within seconds,
@@ -4530,6 +4566,11 @@ local function BuildConfig()
 	AddCheck(col, y, "Show minimap button",
 		function() return db.minimapShown end,
 		function(v) db.minimapShown = v ns.UpdateMinimapButton() end)
+	y = y - 26
+	AddCheck(col, y, "Only on warlocks",
+		function() return db.warlockOnly ~= false end,
+		function(v) db.warlockOnly = v Refresh() ns.UpdateStones(true) ns.UpdateMinimapButton() end,
+		"On a character that isn't a warlock, Shard Grid stays out of the way: no grid, no alerts, no soulstone tracker and no minimap button. /shards still opens these options. Untick it on a character where you want the soulstone tracker anyway.")
 	y = y - 26
 	AddCheck(col, y, "Keep the soul bag closed",
 		function() return db.pouchClosed end,
@@ -5296,7 +5337,7 @@ end
 function ns.UpdateMinimapButton()
 	if not Minimap then return end
 	if not mmButton then
-		if not db.minimapShown then return end
+		if not db.minimapShown or ns.Dormant() then return end
 		mmButton = CreateFrame("Button", "ShardGridMinimapButton", Minimap)
 		mmButton:SetSize(31, 31)
 		mmButton:SetFrameStrata("MEDIUM")
@@ -5354,7 +5395,7 @@ function ns.UpdateMinimapButton()
 		end)
 		mmButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	end
-	mmButton:SetShown(db.minimapShown)
+	mmButton:SetShown(db.minimapShown and not ns.Dormant())
 	PlaceMinimapButton()
 end
 
